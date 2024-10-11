@@ -194,7 +194,7 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 0.0001
     '''
     Preparing main loop.
     '''
-    errs = {'total_cost':[], 'W_cost':[], 'triplet_cost':[], 'GW_cost': []}
+    errs = {'total_cost':[], 'W_cost':[], 'GW_cost': []}
     grad = torch.inf
     gamma_k = gamma
     Q_prev, R_prev, T_prev = None, None, None
@@ -273,9 +273,9 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 0.0001
     
     if returnFull:
         P = Q @ Lambda @ R.T
-        return P, errs['total_cost']
+        return P, errs
     else:
-        return Q, R, T, errs['total_cost']
+        return Q, R, T, errs
 
 
 def compute_grad_A_helper_no_norm(C_factors, A_factors, B_factors, Q, R, Lambda, device, \
@@ -336,8 +336,8 @@ def compute_grad_A_multimarginal(C_factors_tm1t, A_factors_tm1t, B_factors_tm1t,
     gradQ_ttp1, gradR_ttp1 = compute_grad_A_helper_no_norm(C_factors_ttp1, A_factors_ttp1, B_factors_ttp1, \
                                                       Q_t, Q_tp1, Lambda_ttp1, device=device, \
                                                    alpha=alpha, beta=beta, dtype=dtype, full_grad=full_grad)
-    print(gradQ_ttp1.sum())
-    print(gradR_tm1t.sum())
+    #print(gradQ_ttp1.sum())
+    #print(gradR_tm1t.sum())
     gradQ_t = gradQ_ttp1 + gradR_tm1t
     
     normalizer = torch.max(torch.tensor([torch.max(torch.abs(gradQ_t)) ]))

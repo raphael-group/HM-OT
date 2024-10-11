@@ -12,7 +12,7 @@ class WassersteinDifferentiationMapping:
     Q_betas = []
     Q_gammas = []
     T_gammas = []
-
+    errs = {'total_cost':[], 'W_cost':[], 'GW_cost': []}
     
     def __init__(self, rank_list, a=None, b=None, tau_in = 0.0001, tau_out=75, \
                   gamma=90, max_iter=200, min_iter=200, device='cpu', dtype=torch.float64, \
@@ -100,7 +100,7 @@ class WassersteinDifferentiationMapping:
                                                      returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                     min_iter=self.min_iter, initialization=self.initialization, \
                                                       tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                    dtype=self.dtype, updateR = False, updateQ = True, updateT = True, init_args=init_args)
+                                                    dtype=self.dtype, updateR = False, updateQ = True, updateT = True,  init_args=init_args)
             self.Q_betas.append(Q)
             
         return
@@ -109,6 +109,7 @@ class WassersteinDifferentiationMapping:
     def impute_smoothed_transitions(self, C_factors_sequence, A_factors_sequence):
 
         self.T_gammas = []
+        self.errs = {'total_cost':[], 'W_cost':[], 'GW_cost': []}
         
         for i in range(0, self.N, 1):
             
@@ -119,14 +120,20 @@ class WassersteinDifferentiationMapping:
             R0 = self.Q_gammas[i+1]
             init_args = (Q0, R0, None)
             
-            Q,R,T, errs = FRLC_LRDist.FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
+            Q,R,T, _errs = FRLC_LRDist.FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
                                                       r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
                                                      returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                     min_iter=self.min_iter, initialization=self.initialization, \
                                                       tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                    dtype=self.dtype, updateR = False, updateQ = False, updateT = True, init_args=init_args)
+                                                    dtype=self.dtype, updateR = False, updateQ = False, updateT = True, \
+                                                   init_args=init_args, printCost = self.printCost)
             
             self.T_gammas.append(T)
+            
+            if self.printCost:
+                self.errs['total_cost'].append(float(_errs['total_cost'][-1]))
+                self.errs['W_cost'].append(float(_errs['W_cost'][-1]))
+                self.errs['GW_cost'].append(float(_errs['GW_cost'][-1]))
         
         return
 
