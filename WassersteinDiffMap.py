@@ -4,6 +4,7 @@ import util_LR
 import FRLC_LRDist
 
 class WassersteinDifferentiationMapping:
+    
     '''
     Code to compute the full cluster (Q/Lambda) and transition (T) sequence to minimize a joint Wasserstein objective.
     '''
@@ -11,6 +12,7 @@ class WassersteinDifferentiationMapping:
     Q_betas = []
     Q_gammas = []
     T_gammas = []
+
     
     def __init__(self, rank_list, a=None, b=None, tau_in = 0.0001, tau_out=75, \
                   gamma=90, max_iter=200, min_iter=200, device='cpu', dtype=torch.float64, \
@@ -34,6 +36,7 @@ class WassersteinDifferentiationMapping:
         self.beta = beta
         self.initialization = initialization
         self.init_args = init_args
+
     
     def alpha_pass(self, C_factors_sequence, A_factors_sequence):
 
@@ -67,7 +70,8 @@ class WassersteinDifferentiationMapping:
             self.Q_alphas.append(R)
         
         return
-        
+
+    
     def beta_pass(self, C_factors_sequence, A_factors_sequence):
 
         self.Q_betas = []
@@ -100,7 +104,8 @@ class WassersteinDifferentiationMapping:
             self.Q_betas.append(Q)
             
         return
-        
+
+    
     def impute_smoothed_transitions(self, C_factors_sequence, A_factors_sequence):
 
         self.T_gammas = []
@@ -124,6 +129,7 @@ class WassersteinDifferentiationMapping:
             self.T_gammas.append(T)
         
         return
+
     
     def gamma_smoothing(self, C_factors_sequence, A_factors_sequence):
 
@@ -156,7 +162,18 @@ class WassersteinDifferentiationMapping:
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
-        print(len(self.Q_gammas))
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+        
+        return
+
+    
+    def impute_annotated_transitions(self, C_factors_sequence, A_factors_sequence, Qs_annotated):
+        # Fix Qs from annotations
+        self.Q_gammas = Qs_annotated
+        # Impute optimal transition matrices between annotations
+        self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+        
         return
         
+
+
