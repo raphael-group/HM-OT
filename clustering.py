@@ -265,11 +265,10 @@ def plot_labeled_differentiation(population_list,
 
 def get_diffmap_inputs(clustering_list):
     # make population_list
-    populations0 = [len(np.where(clustering_list[0] == label)[0]) for label in set(clustering_list[0])]
-    populations1 = [len(np.where(clustering_list[1] == label)[0]) for label in set(clustering_list[1])]
-    populations2 = [len(np.where(clustering_list[2] == label)[0]) for label in set(clustering_list[2])]
-
-    population_list = [populations0, populations1, populations2]
+    population_list = []
+    for clustering in clustering_list:
+        populations = [len(np.where(clustering == label)[0]) for label in set(clustering)]
+        population_list.append(populations)
 
     # make label_list
     label_list = []
@@ -299,7 +298,7 @@ def diffmap_from_QT(Qs, Ts, node_labels=None, clustering_type='ml'):
             Q_i_clusters, _ = max_likelihood_clustering(Qs[i], Qs[i])
             clustering_list += [Q_i_clusters]
         elif clustering_type == 'ancestral':
-            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i], Ts[i], full_P=True)
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i+1], Ts[i], full_P=True)
             clustering_list += [Q_i_clusters]
         else:
             raise ValueError('Invalid clustering type')
@@ -336,7 +335,7 @@ def plot_clusters_from_QT(Ss, Qs, Ts, node_labels=None, clustering_type='ml', ti
             Q_i_clusters, _ = max_likelihood_clustering(Qs[i], Qs[i])
             clustering_list += [Q_i_clusters]
         elif clustering_type == 'ancestral':
-            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i], Ts[i], full_P=True)
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i+1], Ts[i], full_P=True)
             clustering_list += [Q_i_clusters]
         else:
             raise ValueError('Invalid clustering type')
@@ -350,3 +349,6 @@ def plot_clusters_from_QT(Ss, Qs, Ts, node_labels=None, clustering_type='ml', ti
                       flip=False)
     
     return None
+
+# TODO:
+# whenever we're plotting the original zf clusters, it would be nice to use their original color scheme. 
