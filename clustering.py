@@ -131,14 +131,17 @@ def plot_cluster_pair(S1, S2, labels_W, labels_H, dotsize=15, \
     Input
         S1 : np.ndarray, spatial coordinates for the first slice of shape (n, 2)
         S2 : np.ndarray, spatial coordinates for the second slice of shape (m, 2)
-        Q : np.ndarray, first FRLC subcoupling of shape (n, r) 
-        R : np.ndarray, second FRLC subcoupling of shape (m, r)
-        T : np.ndarray, latent coupling of shape (r, r)
-        num_clusters : int, number of clusters, default=30, we use minimum of this input and rank r
+        labels_W : np.ndarray, cluster labels for the first slice
+        labels_H : np.ndarray, cluster labels for the second slice
+        dotsize : int, size of the dots, default=15
+        spacing : int, spacing around the dots, default=20
+        flipy : bool, whether to flip the y-axis, default=True
         color_scheme : str, color scheme for the clusters, default='tab', other options: 'rainbow'
         title : str, title for the plot, default=None
         save_name : str, file name to save the plot, default=None
-        flip : bool, whether to flip the spatial coordinates, default=False
+        flip : bool, whether to flip the spatial coordinates, default=False # NOTE: is this flipy?
+        cell_type_labels : list, list of length two. 
+                            each element of list is itself a list of cell type labels, or None
 
     Output
         Plots the two slices side by side with spots colored according to their labels from k-means clustering
@@ -155,7 +158,7 @@ def plot_cluster_pair(S1, S2, labels_W, labels_H, dotsize=15, \
     num_clusters = len(labels_union)
     sns.set_style("darkgrid")
     sns.set_context("notebook", font_scale=1.5)
-    fig, axes = plt.subplots(1, 2, figsize=(32, 20), facecolor='white')
+    fig, axes = plt.subplots(1, 2, figsize=(20, 10), facecolor='white')
 
     S1 = S1.cpu().numpy()
     S2 = S2.cpu().numpy()
@@ -208,13 +211,12 @@ def plot_cluster_pair(S1, S2, labels_W, labels_H, dotsize=15, \
         ax.set_title(f'Slice {i+1}\n', color='black')
         ax.set_aspect('equal', adjustable='box')
 
-        if cell_type_labels is not None and i == 0:
-            unique_values_2 = np.unique(np.array(labels_W))
-            cell_type_labels_2 = [cell_type_labels[i] for i in unique_values_2]
+        if cell_type_labels[i] is not None and i == 0:
+            cell_type_labels_2 = cell_type_labels[i]
             handles, labels = ax.get_legend_handles_labels()
             ax.legend(handles=handles, labels=cell_type_labels_2, title='')
-        elif cell_type_labels is not None and i == 1:
-            cell_type_labels_3 = [cell_type_labels[i] for i in unique_values]
+        elif cell_type_labels[i] is not None and i == 1:
+            cell_type_labels_3 = cell_type_labels[i]
             handles, labels = ax.get_legend_handles_labels()
             ax.legend(handles=handles, labels=cell_type_labels_3, title='')
             
@@ -228,17 +230,6 @@ def plot_cluster_pair(S1, S2, labels_W, labels_H, dotsize=15, \
         plt.savefig(save_name, dpi=300, transparent=True, bbox_inches="tight", facecolor='black')
 
     plt.show()
-    
-    if cell_type_labels is not None:
-        cell_type_labelsA = []
-        for label_idx in labels_W:
-            cell_type_labelsA.append(cell_type_labels[label_idx])
-        cell_type_labelsB = []
-        for label_idx in labels_H:
-            cell_type_labelsB.append(cell_type_labels[label_idx])
-        return cell_type_labelsA, cell_type_labelsB
-    else:
-        return
 
 def plot_cluster_triple(S1, S2, S3, labels_W, labels_H, labels_I, color_scheme='tab', title=None, save_name=None, flip=False, dotsize=15):
     """
@@ -587,8 +578,6 @@ def plot_labeled_differentiation(population_list,
         for i in range(r1):
             for j in range(r2):
                 if T[i, j] > 0:  # Plot line only if T[i, j] is greater than 0
-                    print(x_positions[pair_ind][i])
-                    print(x_positions[pair_ind+1][j])
                     plt.plot([x_positions[pair_ind][i], x_positions[pair_ind+1][j]], 
                             [y_positions[pair_ind][i], y_positions[pair_ind+1][j]], 
                             'k-', lw=T[i, j] * ltf, zorder=0)
