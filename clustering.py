@@ -9,49 +9,6 @@ import seaborn as sns
 # clustering
 ###
 
-def extract_short_vectors(Q,R,T):
-    """
-    Input
-        Q : np.ndarray, of shape (n, r)
-        R : np.ndarray, of shape (m, r)
-        T : np.ndarray, of shape (r, r)
-        emphasis : str, 'slice1', 'slice2', or 'both', default='both'
-    Output
-        W : np.ndarray, of shape (n, r)
-        H : np.ndarray, of shape (m, r)
-    """
-    gQ = np.sum(Q, axis=0)
-    # gR = np.sum(R, axis=0)
-    oQ = np.sum(Q, axis=1)
-    oR = np.sum(R, axis=1)
-
-    # W is prob(mapped to ct ell' given spot i)
-    W = np.diag(1/oQ) @ Q @ np.diag(1/gQ) @ T
-    # H is prob(mapped to ct ell' given spot j)
-    H = np.diag(1/oR) @ R
-
-    return W, H
-
-def extract_short_vectors_basic(Q,R,T):
-    """
-    Input
-        Q : np.ndarray, of shape (n, r)
-        R : np.ndarray, of shape (m, r)
-        T : np.ndarray, of shape (r, r)
-        emphasis : str, 'slice1', 'slice2', or 'both', default='both'
-    Output
-        W : np.ndarray, of shape (n, r)
-        H : np.ndarray, of shape (m, r)
-    """
-    gQ = np.sum(Q, axis=0)
-    gR = np.sum(R, axis=0)
-
-    # W is prob(mapped to ct ell' given spot i)
-    W = Q # @ np.diag(1/gQ) @ T
-    # H is prob(mapped to ct ell' given spot j)
-    H = R
-    return W, H
-
 def max_likelihood_clustering(W,H):
     """
     Input
@@ -61,11 +18,6 @@ def max_likelihood_clustering(W,H):
         labels_W : np.ndarray, of shape (n,)
         labels_H : np.ndarray, of shape (m,)
     """
-    # n = W.shape[0]
-    # m = H.shape[0]
-    # WH = np.vstack((W,H))
-    #WH = WH[:,None]/np.sum(WH, axis=1)
-    # labels = np.argmax(WH, axis=1)
     labels_W = np.argmax(W, axis=1)
     labels_H = np.argmax(H, axis=1)
     return labels_W, labels_H
@@ -134,7 +86,10 @@ def k_means_clustering(W, H, k):
 def plot_cluster_list(spatial_list, 
                       cluster_list, 
                       cell_type_labels=None,
-                      color_scheme='tab', title=None, save_name=None, flip=False):
+                      color_scheme='tab', 
+                      title=None, 
+                      save_name=None, 
+                      flip=False):
     """
     Input
         spatial_list : list of np.ndarray, spatial coordinates for the slices
@@ -307,3 +262,91 @@ def plot_labeled_differentiation(population_list,
     sns.despine()
 
     plt.show()
+
+def get_diffmap_inputs(clustering_list):
+    # make population_list
+    populations0 = [len(np.where(clustering_list[0] == label)[0]) for label in set(clustering_list[0])]
+    populations1 = [len(np.where(clustering_list[1] == label)[0]) for label in set(clustering_list[1])]
+    populations2 = [len(np.where(clustering_list[2] == label)[0]) for label in set(clustering_list[2])]
+
+    population_list = [populations0, populations1, populations2]
+
+    # make label_list
+    label_list = []
+
+    cs = 0
+
+    for i in range(len(clustering_list)):
+        label_list.append(list(set(clustering_list[i] + cs)))
+        cs += len(set(clustering_list[i]))
+
+    # make color_dict
+    color_dict = get_color_scheme(label_list, color_scheme='tab')
+
+    return population_list, label_list, color_dict
+
+def diffmap_from_QT(Qs, Ts, node_labels=None, clustering_type='ml'):
+    '''
+    Args:
+        Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
+        Ts : list of (N-1) np.ndarray, of shape (r_t, r_{t+1}), for each transition
+        clustering_type : str, 'ml' or 'kmeans', default='ml'
+    '''
+    # make clustering_list
+    clustering_list = []
+    for i in range(len(Qs)):
+        if clustering_type == 'ml':
+            Q_i_clusters, _ = max_likelihood_clustering(Qs[i], Qs[i])
+            clustering_list += [Q_i_clusters]
+        elif clustering_type == 'ancestral':
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i], Ts[i], full_P=True)
+            clustering_list += [Q_i_clusters]
+        else:
+            raise ValueError('Invalid clustering type')
+    
+    # return clustering_list
+    # get diffmap inputs
+    population_list, label_list, color_dict = get_diffmap_inputs(clustering_list)
+
+    # make transition_list
+    transition_list = Ts
+
+    plot_labeled_differentiation(population_list,
+                                 transition_list,
+                                 label_list,
+                                 color_dict, 
+                                 node_labels,  # New parameter for node labels
+                                 dotsize_factor=1, 
+                                 linethick_factor=10)
+    
+    return None
+
+def plot_clusters_from_QT(Ss, Qs, Ts, node_labels=None, clustering_type='ml', title=None, save_name=None):
+    '''
+    Args:
+        Ss : list of (N) np.ndarrays, of shape (n_t, 2), for each slice, spatial coords
+        Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
+        Ts : list of (N-1) np.ndarray, of shape (r_t, r_{t+1}), for each transition
+        clustering_type : str, 'ml' or 'kmeans', default='ml'
+    '''
+    # make clustering_list
+    clustering_list = []
+    for i in range(len(Qs)):
+        if clustering_type == 'ml':
+            Q_i_clusters, _ = max_likelihood_clustering(Qs[i], Qs[i])
+            clustering_list += [Q_i_clusters]
+        elif clustering_type == 'ancestral':
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i], Ts[i], full_P=True)
+            clustering_list += [Q_i_clusters]
+        else:
+            raise ValueError('Invalid clustering type')
+
+    plot_cluster_list(spatial_list=Ss,
+                      cluster_list=clustering_list,
+                      cell_type_labels=node_labels,
+                      color_scheme='tab', 
+                      title=title, 
+                      save_name=save_name, 
+                      flip=False)
+    
+    return None
