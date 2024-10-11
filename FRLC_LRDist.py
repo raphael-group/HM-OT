@@ -239,18 +239,23 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 0.0001
         
         if printCost:
             primal_cost = torch.trace(((Q.T @ C_factors[0]) @ (C_factors[1] @ R)) @ Lambda.T)
+            '''
             triplet_cost = torch.trace(R@((Lambda.T @ ((Q.T @ A_factors[0]) @ (A_factors[1] @ Q)) @ Lambda)@R.T)) + \
-                                torch.trace( Q @ (((Lambda @ (R.T @ B_factors[0]) @ (B_factors[1] @ R)) @ Lambda.T) @ Q.T) )
+                                torch.trace( Q @ (((Lambda @ (R.T @ B_factors[0]) @ (B_factors[1] @ R)) @ Lambda.T) @ Q.T) )'''
             X = R @ ((Lambda.T @ ((Q.T @ A_factors[0]) @ (A_factors[1] @ Q)) @ Lambda) @ (R.T @ B_factors[0])) @ B_factors[1]
             GW_cost = - 2 * torch.trace(X) # add these: one_r.T @ M1 @ one_r + one_r.T @ M2 @ one_r
             del X
             A1_tild, A2_tild = util_LR.hadamard_square_lr(A_factors[0], A_factors[1].T, device=device)
             GW_cost += torch.inner(A1_tild.T @ (Q @ one_r), A2_tild.T @ (Q @ one_r))
             del A1_tild, A2_tild
+            B1_tild, B2_tild = util_LR.hadamard_square_lr(B_factors[0], B_factors[1].T, device=device)
+            GW_cost += torch.inner(B1_tild.T @ (R @ one_r2), B2_tild.T @ (R @ one_r2))
+            del B1_tild, B2_tild
+            
             errs['W_cost'].append(primal_cost.cpu())
-            errs['triplet_cost'].append((triplet_cost).cpu())
+            #errs['triplet_cost'].append((triplet_cost).cpu())
             errs['GW_cost'].append((GW_cost).cpu())
-            errs['total_cost'].append(((1-alpha)*primal_cost + alpha*(beta*triplet_cost + (1-beta)*GW_cost)).cpu())
+            errs['total_cost'].append(((1-alpha)*primal_cost + alpha*GW_cost).cpu()) #beta*triplet_cost + (1-beta)*GW_cost
         
     if diagonalize_return:
         '''
@@ -261,8 +266,8 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 0.0001
         T = torch.diag(gR)
 
     if printCost:
-        print(f"Initial Wasserstein cost: {errs['W_cost'][0]}, Triplet cost: {errs['triplet_cost'][0]}, (partial) GW-cost: {errs['GW_cost'][0]}, Total cost: {errs['total_cost'][0]}")
-        print(f"Final Wasserstein cost: {errs['W_cost'][-1]}, Triplet cost: {errs['triplet_cost'][-1]}, (partial) GW-cost: {errs['GW_cost'][-1]}, Total cost: {errs['total_cost'][-1]}")
+        print(f"Initial Wasserstein cost: {errs['W_cost'][0]}, GW-cost: {errs['GW_cost'][0]}, Total cost: {errs['total_cost'][0]}")
+        print(f"Final Wasserstein cost: {errs['W_cost'][-1]}, GW-cost: {errs['GW_cost'][-1]}, Total cost: {errs['total_cost'][-1]}")
         plt.plot(errs['total_cost'])
         plt.show()
     
