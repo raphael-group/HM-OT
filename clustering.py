@@ -6,81 +6,182 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 ###
-# clustering
+#   clustering
 ###
 
-def max_likelihood_clustering(W,H):
-    """
-    Input
-        W : np.ndarray, of shape (n, r)
-        H : np.ndarray, of shape (m, r)
-    Output
-        labels_W : np.ndarray, of shape (n,)
-        labels_H : np.ndarray, of shape (m,)
-    """
-    labels_W = np.argmax(W, axis=1)
-    labels_H = np.argmax(H, axis=1)
-    return labels_W, labels_H
 
-def ancestral_clustering(Q,R,T, full_P = True):
-    
+CLUSTERING_DICT = {
+    0:'ml', # max_likelihood_clustering(..., mode='standard') ** default
+    1:'ml-emission', # max_likelihood_clustering(..., mode='emission')
+    2:'ml-soft', # max_likelihood_clustering(..., mode='soft')
+    3:'ancestral', # ancestral_clustering(..., descendant=False) ** default
+    4:'descendent', # ancestral_clustering(..., descendant=True)
+    5:'kmeans-ancestral', # k_means_descendant(..., descendant=False) ** default
+    6:'kmeans-descendant' # k_means_descendant(..., descendant=True)
+}
+
+
+def max_likelihood_clustering(Q, R, mode='standard'):
+    '''
+    Args
+        Q : np.ndarray, of shape (n, r_1), slice 1
+        R : np.ndarray, of shape (m, r_2), slice 2
+        mode : str, 'standard', 'emission', 'soft', default='standard'
+    Out
+        labels_Q : np.ndarray, of shape (n,) with r_1 labels in {0, ..., r_1-1} 
+        labels_R : np.ndarray, of shape (m,) with r_2 labels in {0, ..., r_2-1}
+
+    Description
+        Assigns each spot in slice 1 to the cluster (column index) with the highest probability
+        Assigns each spot in slice 2 to the cluster (column index) with the highest probability
+        Assumes distinct sets of labels for each slice
+
+        in 'standard' mode, Q and R are used as is, where each is assumed to be a joint distribution
+        between spots and cell types of a given slice. Entries are  joint probabilities.
+
+        in 'emission' mode, Q and R are normalized by the inner marginals to be column-stochastic.
+        Entries are now conditional probabilities of spots given cell types, 
+        which we call emission probabilities, as in HMMs.
+
+        in 'soft' mode, Q and R are normalized by the outer marginals to be row-stochastic.
+        Entries are now conditional probabilities of cell types given spots,
+        constituting soft assignments / clusterings / transition matrices
+    '''
+    # form inner marginals
     gQ = np.sum(Q, axis=0)
     gR = np.sum(R, axis=0)
-    Q = Q @ (np.diag(1/gQ) @ T)
-    g = gR
+
+    # form outer marginals
+    a = np.sum(Q, axis=1)
+    b = np.sum(R, axis=1)
+
+    if mode == 'standard':
+        Q_matrix = Q
+        R_matrix = R
+    elif mode == 'emission':
+        Q_matrix = Q @ np.diag(1/gQ)
+        R_matrix = R @ np.diag(1/gR)
+    elif mode == 'soft':
+        Q_matrix = np.diag(1/a) @ Q
+        R_matrix = np.diag(1/b) @ R
+    else:
+        raise ValueError('Invalid mode')
+    labels_Q = np.argmax(Q_matrix, axis=1)
+    labels_R = np.argmax(R_matrix, axis=1)
+    return labels_Q, labels_R
+
+
+def ancestral_clustering(Q, R, T, full_P=True, descendant=False):
+    '''
+    Args
+        Q : np.ndarray, of shape (n, r_1), slice 1
+        R : np.ndarray, of shape (m, r_2), slice 2
+        T : np.ndarray, of shape (r_1, r_2), cell type coupling between slice 1 and slice 2
+        full_P : bool, whether to compute using full matrix P, default=True
+                set to False if the full matrix P can't be stored
+    Out
+        labels_Q : np.ndarray, of shape (n,) with r_1 labels in {0, ..., r_1-1}
+        labels_R : np.ndarray, of shape (m,) with r_1 labels in {0, ..., r_1-1}
+
+    Description
+        Assigns each spot in slice 1 to the cluster (column index) with the highest probability
+        Uses transport plan to determine map "phi : (slice 2) -> (slice 1)" 
+                        from columns (j's in slice 2) to rows (i's in slice 1)
+        The slice 1 assignments and map phi determine the slice 2 assignments
+
+    *** Setting argument descendant=True switches the roles of slice 1 and slice 2 ***
+    '''
+    if descendant==True:
+        T = T.T
+        Q, R = R, Q
+    else:
+        pass
+    # form inner marginals
+    gQ = np.sum(Q, axis=0)
+    gR = np.sum(R, axis=0)
+    # represent slice 1 using slice 2 cell types
+    Q_tilde = Q @ (np.diag(1/gQ) @ T)
     
-    # Fixed labels over slice 1
-    labels_W = np.argmax(Q, axis=1)
-    labels_H = [None]*R.shape[0]
+    # labels in slice 1 are determined as in max_likelihood_clustering
+    labels_Q = np.argmax(Q, axis=1)
+    # labels in slice 2 initialized as None
+    labels_R = [None]*R.shape[0]
     
     if full_P:
-        # Pushback of mass to slice 1 determines final labels
-        P = Q @ np.diag(1/g) @ R.T
-        i_maxs = np.argmax(P, axis=0)
-        # Use clusters on slice 1 to determine co-clustered labels on slice 2
-        labels_H = labels_W[i_maxs]
+        # complete Q_tilde to full transport plan P
+        P = Q_tilde @ np.diag(1/gR) @ R.T
+        # i_maxs is the map phi : (slice 2) -> (slice 1)
+        i_maxs = np.argmax(P, axis=0) # i_maxs[j] is the index of the max value in column j
+        # labels on slice 1 determine labels on slice 2 through i_maxs
+        labels_R = labels_Q[i_maxs] # labels_R[j] is the label of the co-clustered spot in slice 1
     else:
-        # If the full matrix can't be stored, we can still clumsily compute this using a loop
-        for idx in range(R.shape[0]):
-            if idx % 10000 == 0:
-                print(f'Progress: {idx}/{R.shape[0]}')
-            P_j = Q @ (np.diag(1/g) @ R.T[:,idx])
+        # If the full matrix P can't be stored, we can still slowly compute using a loop
+        for j in range(R.shape[0]):
+            if j % 10000 == 0:
+                print(f'Progress: {j}/{R.shape[0]}')
+            P_j = Q_tilde @ (np.diag(1/gR) @ R.T[:,j])
+            # i_max = phi(j)
             i_max = np.argmax(P_j)
-            labels_H[idx] = labels_W[i_max]
+            labels_R[j] = labels_Q[i_max]
     
-    return labels_W, labels_H
+    if descendant==True:
+        labels_Q, labels_R = labels_R, labels_Q
+    else:
+        pass
+    return labels_Q, labels_R
 
-def k_means_clustering(W, H, k):
-    """
+
+def k_means_descendant(Q, R, T, k, descendant=False):
+    '''
     Input
-        W : np.ndarray, of shape (n, r)
-        H : np.ndarray, of shape (m, r)
-        k : int, number of clusters
+        Q : np.ndarray, of shape (n, r_1), slice 1
+        R : np.ndarray, of shape (m, r_2), slice 2
+        T : np.ndarray, of shape (r_1, r_2), cell type coupling between slice 1 and slice 2
+        k : int, number of clusters to use for k-means
     Output
-        labels_W : np.ndarray, of shape (n,)
-        labels_H : np.ndarray, of shape (m,)
-    """
-    # n_components = k
-    # rank_r = W.shape[1]
+        labels_Q : np.ndarray, of shape (n,), with k labels in {0, ..., k-1}
+        labels_R : np.ndarray, of shape (m,), with k labels in {0, ..., k-1}
 
-    km_k = k # np.min((n_components, rank_r)) # use minimum of input k and rank r
-    kmeans = KMeans(n_clusters=km_k, n_init=10)
+    Description
+        Q_tilde = Q @ (np.diag(1/gQ) @ T) represents slice 1 using slice 2 cell types,
+        and has shape (n, r_2).
+        The two representations Q_tilde, R are stacked with shape (n+m, r_2).
+        k-means is applied to the stack, and the cluster labels are assigned to the two slices.
+    
+    *** Setting argument descendant=False switches the roles of slice 1 and slice 2 ***
+    '''
+    if descendant==False:
+        T = T.T
+        Q, R = R, Q
+    else:
+        pass
+    Q_length = len(Q)
+    # compute inner marginals
+    gQ = np.sum(Q, axis=0)
+    gR = np.sum(R, axis=0)
+    # represent slice 1 using slice 2 cell types
+    Q_tilde = Q @ (np.diag(1/gQ) @ T)
 
-    W_length = len(W)
-    # H_length = len(H)
+    # stack the two representations, which use the same set of cell types
+    QR_stack = np.vstack((Q_tilde, R))
 
-    WH_stack = np.vstack((W, H))
+    # initialize k-means, fit to the stack
+    kmeans = KMeans(n_clusters=k, n_init=10)
+    QR_km = kmeans.fit(QR_stack)
+    QR_clusters = QR_km.labels_
 
-    WH_km = kmeans.fit(WH_stack)
-    WH_clusters = WH_km.labels_
+    # assign cluster labels to the two slices from k-means
+    labels_Q = QR_clusters[:Q_length]
+    labels_R = QR_clusters[Q_length:]
 
-    labels_W = WH_clusters[:W_length]
-    labels_H = WH_clusters[W_length:]
-
-    return labels_W, labels_H
+    if descendant==False:
+        labels_Q, labels_R = labels_R, labels_Q
+    else:
+        pass
+    return labels_Q, labels_R
 
 ###
-# plotting
+#   plotting
 ###
 
 def plot_cluster_list(spatial_list, 
@@ -100,7 +201,7 @@ def plot_cluster_list(spatial_list,
         flip : bool, whether to flip the spatial coordinates, default=False
 
     Output
-        Plots the three slices side by side with spots colored according to their labels from k-means clustering
+        
     """
     N_slices = len(spatial_list)
 
@@ -172,6 +273,7 @@ def plot_cluster_list(spatial_list,
         plt.savefig(save_name, dpi=300, transparent=True, bbox_inches="tight", facecolor='black')
     plt.show()
 
+
 def get_color_scheme(cluster_list, color_scheme='tab'):
     unique_values = np.unique(np.concatenate(cluster_list))
 
@@ -238,6 +340,7 @@ def plot_labeled_differentiation(population_list,
         for i in range(r1):
             for j in range(r2):
                 if T[i, j] > 0:  # Plot line only if T[i, j] is greater than 0
+                    print(len(x_positions), len(x_positions[pair_ind]), len(x_positions[pair_ind+1]))
                     plt.plot([x_positions[pair_ind][i], x_positions[pair_ind+1][j]], 
                             [y_positions[pair_ind][i], y_positions[pair_ind+1][j]], 
                             'k-', lw=T[i, j] * ltf, zorder=0)
@@ -297,8 +400,11 @@ def diffmap_from_QT(Qs, Ts, node_labels=None, clustering_type='ml'):
         if clustering_type == 'ml':
             Q_i_clusters, _ = max_likelihood_clustering(Qs[i], Qs[i])
             clustering_list += [Q_i_clusters]
-        elif clustering_type == 'ancestral':
+        elif clustering_type == 'ancestral' and i < len(Qs) - 1:
             Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i+1], Ts[i], full_P=True)
+            clustering_list += [Q_i_clusters]
+        elif clustering_type == 'ancestral' and i == len(Qs) - 1:
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i-1], Ts[i-1].T, full_P=True)
             clustering_list += [Q_i_clusters]
         else:
             raise ValueError('Invalid clustering type')
@@ -334,12 +440,50 @@ def plot_clusters_from_QT(Ss, Qs, Ts, node_labels=None, clustering_type='ml', ti
         if clustering_type == 'ml':
             Q_i_clusters, _ = max_likelihood_clustering(Qs[i], Qs[i])
             clustering_list += [Q_i_clusters]
-        elif clustering_type == 'ancestral':
+        elif clustering_type == 'ancestral' and i < len(Qs) - 1:
             Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i+1], Ts[i], full_P=True)
+            clustering_list += [Q_i_clusters]
+        elif clustering_type == 'ancestral' and i == len(Qs) - 1:
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i-1], Ts[i-1].T, full_P=True)
             clustering_list += [Q_i_clusters]
         else:
             raise ValueError('Invalid clustering type')
 
+    plot_cluster_list(spatial_list=Ss,
+                      cluster_list=clustering_list,
+                      cell_type_labels=node_labels,
+                      color_scheme='tab', 
+                      title=title, 
+                      save_name=save_name, 
+                      flip=False)
+    
+    return None
+
+def testing_ancestral(Qs, Ts, node_labels=None, clustering_type='ml', title=None, save_name=None):
+    '''
+    Args:
+        Ss : list of (N) np.ndarrays, of shape (n_t, 2), for each slice, spatial coords
+        Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
+        Ts : list of (N-1) np.ndarray, of shape (r_t, r_{t+1}), for each transition
+        clustering_type : str, 'ml' or 'kmeans', default='ml'
+    '''
+    # make clustering_list
+    clustering_list = []
+    for i in range(len(Qs)):
+        if clustering_type == 'ml':
+            Q_i_clusters, _ = max_likelihood_clustering(Qs[i], Qs[i])
+            clustering_list += [Q_i_clusters]
+        elif clustering_type == 'ancestral' and i < len(Qs) - 1:
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i+1], Ts[i], full_P=True)
+            clustering_list += [Q_i_clusters]
+        elif clustering_type == 'ancestral' and i == len(Qs) - 1:
+            Q_i_clusters, _ = ancestral_clustering(Qs[i], Qs[i-1], Ts[i-1].T, full_P=True)
+            clustering_list += [Q_i_clusters]
+        else:
+            raise ValueError('Invalid clustering type')
+    
+    print(clustering_list)
+    return None
     plot_cluster_list(spatial_list=Ss,
                       cluster_list=clustering_list,
                       cell_type_labels=node_labels,
