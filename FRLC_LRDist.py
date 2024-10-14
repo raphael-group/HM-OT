@@ -340,7 +340,7 @@ def compute_grad_A_multimarginal(C_factors_tm1t, A_factors_tm1t, B_factors_tm1t,
     #print(gradR_tm1t.sum())
     gradQ_t = gradQ_ttp1 + gradR_tm1t
     
-    normalizer = torch.max(torch.tensor([torch.max(torch.abs(gradQ_t)) ]))
+    normalizer = torch.max(torch.abs(gradQ_t))
     gamma_k = gamma / normalizer
     
     return gradQ_t, gamma_k
@@ -420,9 +420,10 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t, A_factors_tm1t, B_factors_tm1t, \
         gradQ_t, gamma_k = compute_grad_A_multimarginal(C_factors_tm1t, A_factors_tm1t, B_factors_tm1t, Q_tm1, Q_t, Lambda_tm1t, \
                                  C_factors_ttp1, A_factors_ttp1, B_factors_ttp1, Q_tp1, Lambda_ttp1, \
                                     gamma, device=device, alpha=alpha, beta=beta, dtype=dtype, full_grad=full_grad)
+        
         ### Update: Q_t inner clustering ###
         Q_t = logSinkhorn(gradQ_t - (gamma_k**-1)*torch.log(Q_t), b, gQ_t, gamma_k, max_iter = max_inneriters_relaxed, \
-                             device=device, dtype=dtype, balanced=False, unbalanced=True, tau=tau_out, tau2=tau_in)
+                             device=device, dtype=dtype, balanced=False, unbalanced=False, tau=tau_in)
         gQ_t = Q_t.T @ one_N2
         
         ### Update: T_tm1t first transition matrix ###
@@ -430,7 +431,7 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t, A_factors_tm1t, B_factors_tm1t, \
                                        alpha=alpha, beta = beta, dtype=dtype)
         T_tm1t = logSinkhorn(gradT_tm1t - (gamma_T**-1)*torch.log(T_tm1t), gQ_tm1, gQ_t, gamma_T, max_iter = max_inneriters_balanced, \
                              device=device, dtype=dtype, balanced=True, unbalanced=False)
-
+        
         ### Update: T_ttp1 second transition matrix ###
         gradT_ttp1, gamma_T = compute_grad_B_FRLC_LR(C_factors_ttp1, A_factors_ttp1, B_factors_ttp1, Q_t, Q_tp1, Lambda_ttp1, gQ_t, gQ_tp1, gamma, device, \
                                        alpha=alpha, beta = beta, dtype=dtype)
