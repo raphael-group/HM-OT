@@ -442,6 +442,19 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t, A_factors_tm1t, B_factors_tm1t, \
         Lambda_ttp1 = torch.diag(1/ gQ_t) @ T_ttp1 @ torch.diag(1/ gQ_tp1)
         
         k+=1
+
+        
+        if printCost:
+            primal_cost1 = torch.trace(((Q_tm1.T @ C_factors_tm1t[0]) @ (C_factors_tm1t[1] @ Q_t)) @ Lambda_tm1t.T)
+            primal_cost2 = torch.trace(((Q_t.T @ C_factors_ttp1[0]) @ (C_factors_ttp1[1] @ Q_tp1)) @ Lambda_ttp1.T)
+            errs['W_cost'].append(primal_cost1.cpu() + primal_cost2.cpu())
+
+    if printCost:
+        print(f"Initial Wasserstein-sum cost: {errs['W_cost'][0]}")
+        print(f"Final Wasserstein-sum cost: {errs['W_cost'][-1]}")
+        plt.title('Wasserstein-sum cost (excludes GW component)')
+        plt.plot(errs['W_cost'])
+        plt.show()
     
     return Q_t, T_tm1t, T_ttp1
 
