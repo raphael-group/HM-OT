@@ -32,7 +32,7 @@ def factor_mats(C, A, B, device, z=None, c=100, nidx_1=None, nidx_2=None):
 
     else:
         # Distance matrix factored using SVD
-        u, s, v = torch.svd(C)
+        u, s, v = torch.svd(torch.from_numpy(C).to(device))
         print('C done')
         V_C,U_C = torch.mm(u[:,:z], torch.diag(s[:z])), v[:,:z].mT
         u, s, v = torch.svd(torch.from_numpy(A).to(device))
