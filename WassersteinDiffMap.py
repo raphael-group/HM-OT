@@ -44,7 +44,7 @@ class WassersteinDifferentiationMapping:
 
         C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
         r1, r2 = self.rank_list[0]
-
+        
         Q,R,T, errs = FRLC_LRDist.FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
                                                   r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
                                                  returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
@@ -58,9 +58,11 @@ class WassersteinDifferentiationMapping:
         for i in range(1, self.N-1, 1):
 
             C_factors, A_factors, B_factors = C_factors_sequence[i], A_factors_sequence[i], A_factors_sequence[i+1]
-            Q0 = self.Q_alphas[-1]
+            r1, r2 = self.rank_list[i]
             
+            Q0 = self.Q_alphas[-1]
             init_args = (Q0, None, None)
+            
             Q,R,T, errs = FRLC_LRDist.FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
                                                           r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
                                                          returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
@@ -90,17 +92,20 @@ class WassersteinDifferentiationMapping:
         
         for i in range(self.N-2, 0, -1):
             
-            C_factors, A_factors, B_factors = C_factors_sequence[i], A_factors_sequence[i], B_factors_sequence[i+1]
+            C_factors, A_factors, B_factors = C_factors_sequence[i], A_factors_sequence[i], A_factors_sequence[i+1]
             r1, r2 = self.rank_list[i]
             
-            R0 = Q_betas[-1]
+            R0 = self.Q_betas[-1]
+            
             init_args = (None, R0, None)
+            
             Q,R,T, errs = FRLC_LRDist.FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
                                                       r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
                                                      returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                     min_iter=self.min_iter, initialization=self.initialization, \
                                                       tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
                                                     dtype=self.dtype, updateR = False, updateQ = True, updateT = True,  init_args=init_args)
+            
             self.Q_betas.append(Q)
             
         return
@@ -151,10 +156,10 @@ class WassersteinDifferentiationMapping:
             
             C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[i-1], A_factors_sequence[i-1], A_factors_sequence[i]
             C_factors_ttp1, A_factors_ttp1, B_factors_ttp1 = C_factors_sequence[i], A_factors_sequence[i], A_factors_sequence[i+1]
-
-            Q_tm1 = self.Q_alphas[i-1]
-            Q_tp1 = self.Q_betas[(self.N-1) - i]
-
+            
+            Q_tm1 = self.Q_alphas[i - 1]
+            Q_tp1 = self.Q_betas[self.N - i - 1]
+            
             r = self.Q_alphas[i].shape[1]
             
             # Initialize as arguments
@@ -169,6 +174,7 @@ class WassersteinDifferentiationMapping:
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
+        
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
         
         return
