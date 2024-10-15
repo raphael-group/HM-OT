@@ -384,6 +384,9 @@ def get_diffmap_inputs(clustering_list,
 
     return population_list, labels_list, color_dict
 
+def get_reference_transition_matrices(Qs, Ts, reference_index):
+    clustering_list = reference_clustering(Qs, Ts, reference_index)
+
 
 ################################################################################################
 #   plotting: core functions
