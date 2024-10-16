@@ -288,10 +288,10 @@ def compare_T_entropies(Ts_ann, Ts_pred):
         ent_pred = entropy(T_pred.flatten())
         print(f'The entropy of anno transitions from {i} to {i+1} is {ent_ann:.3f}')
         print(f'The entropy of pred transitions from {i} to {i+1} is {ent_pred:.3f}')
-        if ent_ann > ent_pred:
-            print(f'Pred transitions from {i} to {i+1} are **more** entropic than anno transitions')
+        if ent_pred > ent_ann:
+            print(f'Pred transitions from {i} to {i+1} are **MORE** entropic than anno transitions')
         else:
-            print(f'Pred transitions from {i} to {i+1} are **less* entropic than anno transitions')
+            print(f'Pred transitions from {i} to {i+1} are **LESS** entropic than anno transitions')
         print('\n')
 
 def compare_T_col_entropies(Ts_ann, Ts_pred):
@@ -301,10 +301,10 @@ def compare_T_col_entropies(Ts_ann, Ts_pred):
         ent_pred = entropy(T_pred.flatten())
         print(f'The column entropy of anno transitions from {i} to {i+1} is {ent_ann:.3f}')
         print(f'The column entropy of pred transitions from {i} to {i+1} is {ent_pred:.3f}')
-        if ent_ann > ent_pred:
-            print(f'Pred transitions from {i} to {i+1} have **more** column entropy than anno transitions')
+        if ent_pred > ent_ann:
+            print(f'Pred transitions from {i} to {i+1} have **MORE** column entropy than anno transitions')
         else:
-            print(f'Pred transitions from {i} to {i+1} have **less* column entropy than anno transitions')
+            print(f'Pred transitions from {i} to {i+1} have **LESS** column entropy than anno transitions')
         print('\n')
 
 
