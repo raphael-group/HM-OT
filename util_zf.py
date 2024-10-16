@@ -6,6 +6,7 @@ import pandas as pd
 import networkx as nx
 from sklearn.neighbors import kneighbors_graph
 from scipy.spatial import distance
+from scipy.stats import entropy
 
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -257,3 +258,48 @@ def make_sankey(gt_clustering, pred_clustering, gt_labels, save_format='jpg', sa
     else:
         # Export as PNG (default if no extension is specified)
         fig.write_image(save+'.png')
+
+
+
+################################################################################################
+#   computing entropy of latent coupling matrices
+################################################################################################
+
+def compute_column_entropy(gamma):
+    # Ensure gamma is a NumPy array
+    gamma = np.array(gamma)
+    g = np.sum(gamma, axis=0)
+    gamma = gamma @ np.diag(1 / g)
+    # Avoid log(0) by adding a small epsilon where gamma is zero
+    epsilon = 1e-12
+    gamma_nonzero = gamma + (gamma == 0) * epsilon
+    col_entropy_avg = 0
+    for i in range(gamma.shape[1]):
+        col_entropy_avg += -np.sum(gamma[:,i] * np.log(gamma_nonzero[:,i]))
+    return col_entropy_avg
+
+def compare_T_entropies(Ts_ann, Ts_pred):
+    for i, T_pair in enumerate(zip(Ts_ann, Ts_pred)):
+        T_ann, T_pred = T_pair
+        ent_ann = entropy(T_ann.cpu().numpy().flatten())
+        ent_pred = entropy(T_pred.flatten())
+        print(f'The entropy of anno transitions from {i} to {i+1} is {ent_ann:.3f}')
+        print(f'The entropy of pred transitions from {i} to {i+1} is {ent_pre:.3fd}')
+        if ent_ann > ent_pred:
+            print(f'Pred transitions from {i} to {i+1} are **more** entropic than anno transitions')
+        else:
+            print(f'Pred transitions from {i} to {i+1} are **less* entropic than anno transitions')
+        print('\n')
+
+def compare_T_col_entropies(Ts_ann, Ts_pred):
+    for i, T_pair in enumerate(zip(Ts_ann, Ts_pred)):
+        T_ann, T_pred = T_pair
+        ent_ann = compute_column_entropy(T_ann.cpu().numpy())
+        ent_pred = entropy(T_pred.flatten())
+        print(f'The column entropy of anno transitions from {i} to {i+1} is {ent_ann:.3f}')
+        print(f'The column entropy of pred transitions from {i} to {i+1} is {ent_pred:.3f}')
+        if ent_ann > ent_pred:
+            print(f'Pred transitions from {i} to {i+1} have **more** column entropy than anno transitions')
+        else:
+            print(f'Pred transitions from {i} to {i+1} have **less* column entropy than anno transitions')
+        print('\n')
