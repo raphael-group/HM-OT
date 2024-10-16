@@ -8,6 +8,9 @@ from sklearn.neighbors import kneighbors_graph
 from scipy.spatial import distance
 from scipy.stats import entropy
 
+from sklearn.metrics import adjusted_mutual_info_score as ami
+from sklearn.metrics import adjusted_rand_score as ari
+
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
@@ -302,4 +305,41 @@ def compare_T_col_entropies(Ts_ann, Ts_pred):
             print(f'Pred transitions from {i} to {i+1} have **more** column entropy than anno transitions')
         else:
             print(f'Pred transitions from {i} to {i+1} have **less* column entropy than anno transitions')
+        print('\n')
+
+
+################################################################################################
+#   computing ARIs, AMIs
+################################################################################################
+
+def compute_ARI_and_AMI(gt_types_list, pred_types_list, x_percent=5):
+    print(f"ARI and AMI of predictions (filtered excludes ground truth clusters smaller than {x_percent}% of the data)\n")
+    for i, (gt_types, pred_types) in enumerate(zip(gt_types_list, pred_types_list)):
+        raw_ari = ari(gt_types, pred_types)
+        raw_ami = ami(gt_types, pred_types)
+
+        gt_labels = np.array(gt_types)
+        pred_labels = np.array(pred_types)
+        total_points = len(gt_labels)
+
+        # Compute counts of ground truth clusters
+        unique_labels, counts = np.unique(gt_labels, return_counts=True)
+        percentages = counts / total_points * 100
+
+        # Identify clusters to keep (clusters with size >= x%)
+        clusters_to_keep = unique_labels[percentages >= x_percent]
+
+        # Create a mask to keep only data points in clusters_to_keep
+        mask = np.isin(gt_labels, clusters_to_keep)
+
+        # Apply mask to both gt_labels and pred_labels
+        gt_labels_filtered = gt_labels[mask]
+        pred_labels_filtered = pred_labels[mask]
+
+        # Compute ARI and AMI on the filtered labels
+        x_ari = ari(gt_labels_filtered, pred_labels_filtered)
+        x_ami = ami(gt_labels_filtered, pred_labels_filtered)
+
+        print(f'ARI for {i}th slice is {raw_ari:.3f} (filtered: {x_ari:.3f}) \t')
+        print(f'AMI for {i}th slice is {raw_ami:.3f} (filtered: {x_ami:.3f})')
         print('\n')
