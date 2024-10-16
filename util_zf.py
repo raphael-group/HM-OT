@@ -284,7 +284,7 @@ def compare_T_entropies(Ts_ann, Ts_pred):
         ent_ann = entropy(T_ann.cpu().numpy().flatten())
         ent_pred = entropy(T_pred.flatten())
         print(f'The entropy of anno transitions from {i} to {i+1} is {ent_ann:.3f}')
-        print(f'The entropy of pred transitions from {i} to {i+1} is {ent_pre:.3fd}')
+        print(f'The entropy of pred transitions from {i} to {i+1} is {ent_pred:.3fd}')
         if ent_ann > ent_pred:
             print(f'Pred transitions from {i} to {i+1} are **more** entropic than anno transitions')
         else:
