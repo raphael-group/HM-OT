@@ -8,10 +8,17 @@ class WassersteinDifferentiationMapping:
     '''
     Code to compute the full cluster (Q/Lambda) and transition (T) sequence to minimize a joint Wasserstein objective.
     '''
+    
+    # Alpha-pass variables
     Q_alphas = []
+    T_alphas = []
+    # Beta-pass variables
     Q_betas = []
+    T_betas = []
+    # Gamma-smoothed variables
     Q_gammas = []
     T_gammas = []
+    
     errs = {'total_cost':[], 'W_cost':[], 'GW_cost': []}
     
     def __init__(self, rank_list, a=None, b=None, tau_in = 0.0001, tau_out=75, \
@@ -50,10 +57,12 @@ class WassersteinDifferentiationMapping:
                                                  returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                 min_iter=self.min_iter, initialization=self.initialization, \
                                                   tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                dtype=self.dtype, updateR = True, updateQ = True, updateT = True, init_args=(None,None,None))
+                                                dtype=self.dtype, updateR = True, updateQ = True, updateT = True, \
+                                              init_args=(None,None,None), printCost=self.printCost)
 
         self.Q_alphas.append(Q)
         self.Q_alphas.append(R)
+        self.T_alphas.append(T)
         
         for i in range(1, self.N-1, 1):
 
@@ -68,9 +77,11 @@ class WassersteinDifferentiationMapping:
                                                          returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                         min_iter=self.min_iter, initialization=self.initialization, \
                                                           tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                        dtype=self.dtype, updateR = True, updateQ = False, updateT = True, init_args=init_args)
+                                                        dtype=self.dtype, updateR = True, updateQ = False, updateT = True, \
+                                                  init_args=init_args, printCost=self.printCost)
             self.Q_alphas.append(R)
-        
+            self.T_alphas.append(T)
+            
         return
 
     
@@ -86,9 +97,11 @@ class WassersteinDifferentiationMapping:
                                                  returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                 min_iter=self.min_iter, initialization=self.initialization, \
                                                   tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                dtype=self.dtype, updateR = True, updateQ = True, updateT = True, init_args=(None,None,None))
+                                                dtype=self.dtype, updateR = True, updateQ = True, updateT = True, \
+                                              init_args=(None,None,None), printCost=self.printCost)
         self.Q_betas.append(R)
         self.Q_betas.append(Q)
+        self.T_betas.append(T)
         
         for i in range(self.N-2, 0, -1):
             
@@ -104,9 +117,11 @@ class WassersteinDifferentiationMapping:
                                                      returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                     min_iter=self.min_iter, initialization=self.initialization, \
                                                       tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                    dtype=self.dtype, updateR = False, updateQ = True, updateT = True,  init_args=init_args)
+                                                    dtype=self.dtype, updateR = False, updateQ = True, updateT = True, \
+                                                  init_args=init_args, printCost=self.printCost)
             
             self.Q_betas.append(Q)
+            self.T_betas.append(T)
             
         return
 
@@ -170,7 +185,7 @@ class WassersteinDifferentiationMapping:
                             C_factors_ttp1, A_factors_ttp1, B_factors_ttp1, r=r, max_iter=self.max_iter, device=self.device, \
                                                          returnFull=self.returnFull, alpha=self.alpha, beta=self.beta, \
                                                         min_iter = self.min_iter, initialization=self.initialization, tau_out=self.tau_out, \
-                                                        tau_in=self.tau_in, gamma=self.gamma, dtype=self.dtype, init_args=init_args)
+                                                        tau_in=self.tau_in, gamma=self.gamma, dtype=self.dtype, init_args=init_args, printCost=self.printCost)
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
