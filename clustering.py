@@ -596,7 +596,7 @@ def diffmap_from_QT(Qs,
                     clustering_type='ml', 
                     reference_index=None,
                     title=None,
-                    save_name=None):
+                    save_name=None, dsf=1):
     '''
     Args:
         Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
@@ -629,7 +629,7 @@ def diffmap_from_QT(Qs,
                                  color_dict, 
                                  cell_type_labels,
                                  clustering_type,
-                                 dotsize_factor=1, 
+                                 dotsize_factor=dsf, 
                                  linethick_factor=10,
                                  title=title,
                                  save_name=save_name)
@@ -643,7 +643,8 @@ def plot_clusters_from_QT(Ss,
                           clustering_type='ml',
                           reference_index=None,
                           title=None, 
-                          save_name=None):
+                          save_name=None, 
+                             flip=False):
     '''
     Args:
         Ss : list of (N) np.ndarrays, of shape (n_t, 2), for each slice, spatial coords
@@ -672,7 +673,7 @@ def plot_clusters_from_QT(Ss,
                       cmap='tab', 
                       title=title, 
                       save_name=save_name, 
-                      flip=False)
+                      flip=flip)
     
     return None
 
