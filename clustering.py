@@ -400,6 +400,7 @@ def plot_clustering_list(spatial_list,
                       cmap='tab', 
                       title=None, 
                       save_name=None, 
+                      dotsize=1,
                       flip=False):
     '''
     Input
@@ -454,7 +455,7 @@ def plot_clustering_list(spatial_list,
             cs += len(set(value_vec))
 
         sns.scatterplot(
-            x='x', y='y', hue='value', palette=color_dict, data=df, ax=ax, s=100, legend=True
+            x='x', y='y', hue='value', palette=color_dict, data=df, ax=ax, s=dotsize, legend=True
         )
 
         ax.set_xlim(x_min, x_max)
@@ -644,6 +645,7 @@ def plot_clusters_from_QT(Ss,
                           reference_index=None,
                           title=None, 
                           save_name=None, 
+                          dotsize=1,
                              flip=False):
     '''
     Args:
@@ -673,6 +675,7 @@ def plot_clusters_from_QT(Ss,
                       cmap='tab', 
                       title=title, 
                       save_name=save_name, 
+                      dotsize=dotsize,
                       flip=flip)
     
     return None
