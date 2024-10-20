@@ -7,6 +7,7 @@ from sklearn.cluster import KMeans
 from tqdm import tqdm
 import clustering
 from sklearn.metrics import adjusted_mutual_info_score
+import FRLC_LRDist
 
 
 def low_rank_distance_factorization(X1, X2, r, eps, device='cpu', dtype=torch.float64):
@@ -116,6 +117,7 @@ def hadamard_lr(A1, A2, B1, B2, device='cpu'):
     
     return M1_tilde, M2_tilde
 
+'''
 def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B):
     n = V_C.shape[0]
     scale = 1/(V_C.shape[0]*U_C.shape[1])**1/2
@@ -146,6 +148,37 @@ def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B):
     
     norm_constant = ( torch.trace( (V_C.T @ V_C) @ (U_C @ U_C.T) ) )**1/2 * (n)**1/2
     V_C, U_C = V_C/(norm_constant*scale), U_C/(norm_constant*scale)
+    return V_C, U_C, M1_A, M1_B, M2_A, M2_B
+'''
+
+def estimate_max_norm(A, B):
+    assert A.shape[1] == B.shape[0], 'Inner matrix dimensions must equal.'
+    col_norms = torch.linalg.norm(A, axis=0)
+    row_norms = torch.linalg.norm(B, axis=1)
+    colrow_prods = col_norms*row_norms
+    C_max = torch.max(colrow_prods)
+    return C_max
+
+def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B, device='cpu'):
+    n = V_C.shape[0]
+
+    norm_constant1 = estimate_max_norm(V_C, U_C)**1/2
+    norm_constant2 = estimate_max_norm(M1_A, M1_B)**1/2
+    norm_constant3 = estimate_max_norm(M2_A, M2_B)**1/2
+    
+    V_C, U_C = V_C/norm_constant1, U_C/norm_constant1
+    M1_A, M1_B = M1_A/norm_constant2, M1_B/norm_constant2
+    M2_A, M2_B = M2_A/norm_constant2, M2_B/norm_constant3
+    '''
+    Q,R,T, errs = FRLC_LRDist.FRLC_LR_opt((V_C, U_C), (M1_A, M1_B), (M2_A, M2_B), r=2, max_iter=2, \
+                                          min_iter=2, printCost=True, device=device, returnFull=False)
+    del Q,R,T
+    cGW = errs['GW_cost'][0]
+    cW = errs['W_cost'][0]
+    '''
+    c = (norm_constant1 / norm_constant2**2)**1/2
+    V_C, U_C = V_C*c, U_C*c
+    
     return V_C, U_C, M1_A, M1_B, M2_A, M2_B
 
 def scale_matrix_rows(matrix):
@@ -160,6 +193,8 @@ def scale_matrix_rows(matrix):
     matrix_scaled = matrix / max_norm
     return matrix_scaled
 
+
+'''
 def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
               feature_handle1 = 'slice1_feature.npy', feature_handle2 = 'slice2_feature.npy',
              spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True):
@@ -203,6 +238,87 @@ def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
         M2_A, M2_B = V_B, U_B.T
     
     del V_A, U_A, V_B, U_B
+    
+    V_C, U_C, M1_A, M1_B, M2_A, M2_B = normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B)
+    return V_C, U_C, M1_A, M1_B, M2_A, M2_B
+'''
+def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
+              feature_handle1 = 'slice1_feature.npy', feature_handle2 = 'slice2_feature.npy',
+             spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True):
+    
+    data_t1 = torch.from_numpy(np.load(filehandle_embryo + feature_handle1)).to(device)
+    data_t2 = torch.from_numpy(np.load(filehandle_embryo + feature_handle2)).to(device)
+    
+    spatial_t1 =  torch.from_numpy(np.load(filehandle_embryo + spatial_handle1)).to(device)
+    spatial_t2 =  torch.from_numpy(np.load(filehandle_embryo + spatial_handle2)).to(device)
+    
+    # Factorize C
+    V_C, U_C = low_rank_distance_factorization(data_t1, data_t2, r, eps, device=device)
+    
+    n, m = V_C.shape[0], U_C.shape[1]
+    
+    # M1 matrix
+    V_A, U_A = low_rank_distance_factorization(data_t1, data_t1, r2, eps, device=device)
+    V_B, U_B = low_rank_distance_factorization(spatial_t1, spatial_t1, r2, eps, device=device)
+    
+    if hadamard:
+        M1_A, M1_B = hadamard_lr(V_A, U_A.T, V_B, U_B.T, device=device)
+    else:
+        # Default to spatial dist
+        M1_A, M1_B = V_B, U_B.T
+    
+    # M2 matrix
+    V_A, U_A = low_rank_distance_factorization(data_t2, data_t2, r2, eps, device=device)
+    V_B, U_B = low_rank_distance_factorization(spatial_t2, spatial_t2, r2, eps, device=device)
+    
+    if hadamard:
+        M2_A, M2_B = hadamard_lr(V_A, U_A.T, V_B, U_B.T, device=device)
+    else:
+        # Default to spatial dist
+        M2_A, M2_B = V_B, U_B.T
+    
+    del V_A, U_A, V_B, U_B
+    
+    V_C, U_C, M1_A, M1_B, M2_A, M2_B = normalize_mats(V_C, U_C, M1_A, M1_B.T, M2_A, M2_B.T, device=device)
+    M1_B, M2_B = M1_B.T, M2_B.T
+    return V_C, U_C, M1_A, M1_B, M2_A, M2_B
+
+
+def load_data_svd(filehandle_embryo, r=100, r2=100, eps=0.03, device='cpu', \
+              feature_handle1 = 'slice1_feature.npy', feature_handle2 = 'slice2_feature.npy',
+             spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True):
+    
+    data_t1 = np.load(filehandle_embryo + feature_handle1)
+    data_t2 = np.load(filehandle_embryo + feature_handle2)
+    
+    n, m = data_t1.shape[0], data_t2.shape[0]
+    data_t1 = scale_matrix_rows(data_t1)
+    data_t2 = scale_matrix_rows(data_t2)
+    
+    data_t1 = torch.from_numpy(data_t1).to(device)
+    data_t2 = torch.from_numpy(data_t2).to(device)
+    
+    spatial_t1 =  torch.from_numpy(np.load(filehandle_embryo + spatial_handle1)).to(device)
+    spatial_t2 =  torch.from_numpy(np.load(filehandle_embryo + spatial_handle2)).to(device)
+    
+    # Factorize C
+    C = torch.cdist(data_t1, data_t2).to(device)
+    u, s, v = torch.svd(C)
+    print('C done')
+    V_C,U_C = torch.mm(u[:,:r], torch.diag(s[:r])), v[:,:r].mT
+    del C, u, s, v
+
+    A = torch.cdist(data_t1, data_t1).to(device)*torch.cdist(spatial_t1, spatial_t1).to(device)
+    u, s, v = torch.svd(A)
+    print('A done')
+    M1_A,M1_B = torch.mm(u[:,:r2], torch.diag(s[:r2])), v[:,:r2].mT
+    del A, u, s, v
+
+    B = torch.cdist(data_t2, data_t2).to(device)*torch.cdist(spatial_t2, spatial_t2).to(device)
+    u, s, v = torch.svd(B)
+    print('B done')
+    M2_A, M2_B = torch.mm(u[:,:r2], torch.diag(s[:r2])), v[:,:r2].mT
+    del B, u, s, v
     
     V_C, U_C, M1_A, M1_B, M2_A, M2_B = normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B)
     return V_C, U_C, M1_A, M1_B, M2_A, M2_B

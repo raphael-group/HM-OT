@@ -48,6 +48,7 @@ class WassersteinDifferentiationMapping:
     def alpha_pass(self, C_factors_sequence, A_factors_sequence):
 
         self.Q_alphas = []
+        self.T_alphas = []
 
         C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
         r1, r2 = self.rank_list[0]
@@ -88,6 +89,7 @@ class WassersteinDifferentiationMapping:
     def beta_pass(self, C_factors_sequence, A_factors_sequence):
 
         self.Q_betas = []
+        self.T_betas = []
         
         C_factors, A_factors, B_factors = C_factors_sequence[self.N-1], A_factors_sequence[self.N-1], A_factors_sequence[self.N]
         r1, r2 = self.rank_list[self.N-1]
@@ -103,7 +105,7 @@ class WassersteinDifferentiationMapping:
         self.Q_betas.append(Q)
         self.T_betas.append(T)
         
-        for i in range(self.N-2, 0, -1):
+        for i in range(self.N-2, -1, -1):
             
             C_factors, A_factors, B_factors = C_factors_sequence[i], A_factors_sequence[i], A_factors_sequence[i+1]
             r1, r2 = self.rank_list[i]
@@ -189,7 +191,8 @@ class WassersteinDifferentiationMapping:
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
-        
+        # Clearing alpha matrices for space 
+        self.Q_alphas = []
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
         
         return
