@@ -26,7 +26,37 @@ import plotly.graph_objects as go
 #   misc
 ################################################################################################
 
-def factor_mats(C, A, B, device, z=None, c=100, nidx_1=None, nidx_2=None):    
+def factor_mats(C, A, B, device, z=None, c=1, nidx_1=None, nidx_2=None):    
+    norm1 = c
+    norm2 = A.max()*c
+    norm3 = B.max()*c
+    
+    if z is None:
+        # No low-rank factorization applied to the distance matrix
+        A = torch.from_numpy(A).to(device)
+        B = torch.from_numpy(B).to(device)
+        C_factors = (torch.from_numpy(C).to(device)/ (norm1), torch.eye(C.shape[1]).type(torch.DoubleTensor).to(device))
+        A_factors = (A/ (norm2), torch.eye(A.shape[1]).type(torch.DoubleTensor).to(device))
+        B_factors = (B/ (norm3), torch.eye(B.shape[1]).type(torch.DoubleTensor).to(device))
+
+    else:
+        # Distance matrix factored using SVD
+        u, s, v = torch.svd(torch.from_numpy(C).to(device))
+        print('C done')
+        V_C,U_C = torch.mm(u[:,:z], torch.diag(s[:z])), v[:,:z].mT
+        u, s, v = torch.svd(torch.from_numpy(A).to(device))
+        print('A done')
+        V1_A,V1_B = torch.mm(u[:,:z], torch.diag(s[:z])), v[:,:z].mT
+        u, s, v = torch.svd(torch.from_numpy(B).to(device))
+        print('B done')
+        V2_A,V2_B = torch.mm(u[:,:z], torch.diag(s[:z])), v[:,:z].mT
+        C_factors, A_factors, B_factors = ((V_C.type(torch.DoubleTensor).to(device)/norm1, U_C.type(torch.DoubleTensor).to(device)/norm1), \
+                                       (V1_A.type(torch.DoubleTensor).to(device)/norm2, V1_B.type(torch.DoubleTensor).to(device)/norm2), \
+                                       (V2_A.type(torch.DoubleTensor).to(device)/norm3, V2_B.type(torch.DoubleTensor).to(device)/norm3))
+    
+    return C_factors, A_factors, B_factors
+
+def factor_mats_for_sc(C, A, B, device, z=None, c=100, nidx_1=None, nidx_2=None):    
     norm1 = c
     norm2 = A.max()*c
     norm3 = B.max()*c
@@ -475,6 +505,7 @@ def plot_collision_profile(T):
     plt.grid(True)
     plt.show()
 
+"""
 def plot_collision_profiles(T1, T2, title, tolerance=0.01, consecutive_agreement=10, plot_ticks_step=5):
     # Get the total number of entries in T1 and T2 (assuming same shape for both)
     num_entries = T1.size
@@ -512,6 +543,77 @@ def plot_collision_profiles(T1, T2, title, tolerance=0.01, consecutive_agreement
     plt.figure(figsize=(8, 6))
     plt.plot(k_range, truncated_ratios_T1, marker='o', linestyle='-', color='b', label='Matrix T1')
     plt.plot(k_range, truncated_ratios_T2, marker='x', linestyle='--', color='r', label='Matrix T2')
+    plt.xlabel('k (Top-k Entries)')
+    plt.ylabel('Collision Ratio')
+    plt.title(title)  # Use the title provided as an argument
+    plt.grid(False)
+
+    plt.xticks(np.arange(1, truncate_index + 1, step=plot_ticks_step)) # Adjust the step size for x-axis ticks
+
+    plt.legend()
+    plt.show()
+"""
+
+def plot_collision_profiles(list_of_Ts, title, tolerance=0.01, consecutive_agreement=10, plot_ticks_step=5, label_list=None):
+    """
+    Plots collision profiles for a list of matrices, comparing their top-k entry collision ratios.
+
+    Parameters:
+    - list_of_Ts: A list of matrices to compare.
+    - title: Title for the plot.
+    - tolerance: Tolerance for comparing the ratios of the matrices.
+    - consecutive_agreement: The number of consecutive agreements needed to stop plotting early.
+    - plot_ticks_step: Step size for x-axis ticks.
+    """
+    num_matrices = len(list_of_Ts)
+    
+    if num_matrices < 2:
+        raise ValueError("At least two matrices are required for comparison.")
+    
+    # Get the total number of entries in the first matrix (assuming all matrices are the same size)
+    num_entries = list_of_Ts[0].size
+
+    # Initialize lists to store the ratios for each matrix
+    all_ratios = []
+
+    # Compute the ratio for each matrix for each k from 1 to the total number of entries
+    for T in list_of_Ts:
+        ratios = []
+        for k in range(1, num_entries + 1):
+            ratio = top_k_collision_ratio(T, k)
+            ratios.append(ratio)
+        all_ratios.append(ratios)
+
+    # Find the point where all profiles start to agree completely
+    truncate_index = num_entries  # Default to the full range if no early stopping is found
+    agreement_count = 0
+
+    for k in range(1, num_entries):
+        # Check agreement across all matrices
+        differences = [abs(all_ratios[i][k] - all_ratios[j][k]) for i in range(num_matrices) for j in range(i + 1, num_matrices)]
+        
+        if all(diff < tolerance for diff in differences):
+            agreement_count += 1
+            if agreement_count >= consecutive_agreement:
+                truncate_index = k + 1  # Stop after finding `consecutive_agreement` steps of agreement
+                break
+        else:
+            agreement_count = 0  # Reset if they disagree again
+
+    # Truncate the profiles at the point of agreement
+    k_range = range(1, truncate_index + 1)
+    truncated_ratios = [ratios[:truncate_index] for ratios in all_ratios]
+
+    # Plot the profiles for each matrix on the same graph
+    plt.figure(figsize=(8, 6))
+
+    if label_list is None:
+        label_list = [f'Matrix T{i+1}' for i, tr in enumerate(truncated_ratios)]
+    else:
+        pass
+    for i, truncated_ratio in enumerate(truncated_ratios):
+        plt.plot(k_range, truncated_ratio, marker='o', linestyle='-', label=label_list[i])
+
     plt.xlabel('k (Top-k Entries)')
     plt.ylabel('Collision Ratio')
     plt.title(title)  # Use the title provided as an argument
