@@ -307,6 +307,22 @@ def compute_column_entropy(gamma):
         col_entropy_avg += -np.sum(gamma[:,i] * np.log(gamma_nonzero[:,i]))
     return col_entropy_avg
 
+def compute_row_entropy(gamma):
+    # Ensure gamma is a NumPy array
+    gamma = np.array(gamma)
+    # Sum along the rows
+    row_sums = np.sum(gamma, axis=1)
+    # Normalize to make rows sum to 1 (row-stochastic)
+    gamma = np.diag(1 / row_sums) @ gamma
+    # Avoid log(0) by adding a small epsilon where gamma is zero
+    epsilon = 1e-12
+    gamma_nonzero = gamma + (gamma == 0) * epsilon
+    row_entropy_avg = 0
+    # Compute the entropy for each row and sum
+    for i in range(gamma.shape[0]):
+        row_entropy_avg += -np.sum(gamma[i, :] * np.log(gamma_nonzero[i, :]))
+    return row_entropy_avg
+
 def compare_T_entropies(Ts_ann, Ts_pred):
     for i, T_pair in enumerate(zip(Ts_ann, Ts_pred)):
         T_ann, T_pred = T_pair
@@ -315,7 +331,7 @@ def compare_T_entropies(Ts_ann, Ts_pred):
         if ent_pred > ent_ann:
             print(f'Pred transitions {i} -> {i+1} are **MORE** entropic: {ent_pred:.3f} > {ent_ann:.3f}')
         else:
-            print(f'Pred transitions {i} to {i+1} are **LESS** entropic: {ent_pred:.3f} < {ent_ann:.3f}')
+            print(f'Pred transitions {i} to {i+1} are **LESS** entropic: {ent_pred:.3f} < {ent_ann:.3f}') 
 
 def compare_T_col_entropies(Ts_ann, Ts_pred):
     for i, T_pair in enumerate(zip(Ts_ann, Ts_pred)):
@@ -326,6 +342,16 @@ def compare_T_col_entropies(Ts_ann, Ts_pred):
             print(f'Pred transitions {i} -> {i+1} have **MORE** column entropy: {ent_pred:.3f} > {ent_ann:.3f}')
         else:
             print(f'Pred transitions {i} -> {i+1} have **LESS** column entropy: {ent_pred:.3f} < {ent_ann:.3f}')
+
+def compare_T_row_entropies(Ts_ann, Ts_pred):
+    for i, T_pair in enumerate(zip(Ts_ann, Ts_pred)):
+        T_ann, T_pred = T_pair
+        ent_ann = compute_row_entropy(T_ann.cpu().numpy())
+        ent_pred = compute_row_entropy(T_pred)
+        if ent_pred > ent_ann:
+            print(f'Pred transitions {i} -> {i+1} have **MORE** row entropy: {ent_pred:.3f} > {ent_ann:.3f}')
+        else:
+            print(f'Pred transitions {i} -> {i+1} have **LESS** row entropy: {ent_pred:.3f} < {ent_ann:.3f}')
 
 ################################################################################################
 #   computing ARIs, AMIs
