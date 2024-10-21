@@ -321,7 +321,7 @@ def compare_T_col_entropies(Ts_ann, Ts_pred):
     for i, T_pair in enumerate(zip(Ts_ann, Ts_pred)):
         T_ann, T_pred = T_pair
         ent_ann = compute_column_entropy(T_ann.cpu().numpy())
-        ent_pred = entropy(T_pred.flatten())
+        ent_pred = compute_column_entropy(T_pred)
         if ent_pred > ent_ann:
             print(f'Pred transitions {i} -> {i+1} have **MORE** column entropy: {ent_pred:.3f} > {ent_ann:.3f}')
         else:
