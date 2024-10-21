@@ -4,6 +4,8 @@ import matplotlib.colors as mcolors
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.graph_objects as go
+
 
 ################################################################################################
 #   clustering functions
@@ -726,3 +728,197 @@ def both_from_QT(Ss,
 
 # TODO:
 # whenever we're plotting the original zf clusters, it would be nice to use their original color scheme. 
+
+################################################################################################
+#   sankey plotting
+################################################################################################
+
+def rgba_to_plotly_string(rgba):
+    ''' Convert a list of [r, g, b, a] values to an rgba string for plotly '''
+    r, g, b, a = rgba
+    return f'rgba({int(r * 255)}, {int(g * 255)}, {int(b * 255)}, {a})'
+
+def plot_labeled_differentiation_sankey(population_list,
+                                        transition_list,
+                                        label_list,
+                                        color_dict, 
+                                        cell_type_labels=None,  # New parameter for node labels
+                                        clustering_type='ml',
+                                        reference_index=None,
+                                        dotsize_factor=1, 
+                                        linethick_factor=10,
+                                        save_name=None,
+                                        title=None):
+    '''
+    Args
+        population_list : list of lists, number of spots in each cluster for each slice
+        transition_list : list of np.ndarrays, cell type coupling matrices between consecutive slices
+        label_list : list of lists, unique cluster labels (ints) for each slice
+        color_dict : dict, dictionary with cluster labels as keys and colors as values
+        cell_type_labels : list of lists of str, default=None or None
+        clustering_type : str, 'ml' or 'reference', default='ml'
+        reference_index : int, index of the slice to use as reference, default=None
+        dotsize_factor : int, factor to scale the size of the dots, default=1
+        linethick_factor : int, factor to scale the thickness of the lines, default=10
+        save_name : str, file name to save the plot, default=None
+
+    Output
+
+    Description
+    '''
+
+    N_slices = len(population_list)
+    
+    # Prepare node and link data for Sankey plot
+    node_labels = []
+    link_sources = []
+    link_targets = []
+    link_values = []
+    node_colors = []
+    
+    node_idx_map = {}  # To keep track of node indices for different slices
+    current_node_idx = 0
+    
+    # Build nodes and transitions (links)
+    for slice_idx, population in enumerate(population_list):
+        for i, label in enumerate(label_list[slice_idx]):
+            # Add node label; handle None case
+            if cell_type_labels and cell_type_labels[slice_idx] is not None:
+                node_label = cell_type_labels[slice_idx][i] if cell_type_labels[slice_idx][i] is not None else str(label)
+            else:
+                node_label = str(label)  # Default to the cluster label if no cell type labels are given
+            
+            node_labels.append(node_label)
+            node_idx_map[(slice_idx, i)] = current_node_idx  # Map to node index
+            
+            # Convert color to a plotly-friendly format
+            node_colors.append(rgba_to_plotly_string(color_dict[label]))
+            current_node_idx += 1
+    
+    for pair_ind, T in enumerate(transition_list):
+        r1 = T.shape[0]
+        r2 = T.shape[1]
+
+        for i in range(r1):
+            for j in range(r2):
+                if T[i, j] > 0:  # Only add non-zero transitions
+                    source_node = node_idx_map[(pair_ind, i)]
+                    target_node = node_idx_map[(pair_ind + 1, j)]
+                    link_sources.append(source_node)
+                    link_targets.append(target_node)
+                    link_values.append(T[i, j] * linethick_factor)
+
+    # Create the Sankey plot
+    fig = go.Figure(go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color="black", width=0.5),
+            label=node_labels,
+            color=node_colors,  # Correctly formatted colors
+        ),
+        link=dict(
+            source=link_sources,  # Indices of source nodes
+            target=link_targets,  # Indices of target nodes
+            value=link_values     # Flow values for transitions
+        )
+    ))
+
+    # Add title
+    if title:
+        fig.update_layout(title_text=title, font_size=24)
+    else:
+        fig.update_layout(title_text='Differentiation Map', font_size=24)
+
+    # Save plot if needed
+    if save_name is not None:
+        fig.write_image(save_name)
+    
+    fig.show()
+
+    return None
+
+def diffmap_from_QT_sankey(Qs, 
+                    Ts, 
+                    cell_type_labels=None, 
+                    clustering_type='ml', 
+                    reference_index=None,
+                    title=None,
+                    save_name=None, dsf=1):
+    '''
+    Args:
+        Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
+        Ts : list of (N-1) np.ndarray, of shape (r_t, r_{t+1}), for each transition
+        clustering_type : str, 'ml' or 'reference', default='ml'
+        cell_type_labels : list of (N) lists of str, default=None
+        reference_index : int, index of the slice to use as reference, default=None
+                        NOTE: reference_index is required if clustering_type='reference'
+    '''
+    # make clustering_list
+    if clustering_type == 'ml':
+        clustering_list = max_likelihood_clustering(Qs)
+    
+    elif clustering_type == 'reference':
+        if reference_index is None:
+            raise ValueError('Reference index required for reference clustering')
+        clustering_list = reference_clustering(Qs, Ts, reference_index)
+    else:
+        raise ValueError('Invalid clustering type')
+
+    # get diffmap inputs
+    population_list, labels_list, color_dict = get_diffmap_inputs(clustering_list, clustering_type)
+
+    # make transition_list
+    transition_list = Ts
+
+    # Call the Sankey plot function instead of the previous one
+    plot_labeled_differentiation_sankey(population_list,
+                                        transition_list,
+                                        labels_list,
+                                        color_dict, 
+                                        cell_type_labels,
+                                        clustering_type,
+                                        dotsize_factor=dsf, 
+                                        linethick_factor=10,
+                                        title=title,
+                                        save_name=save_name)
+    
+    return None
+
+def both_from_QT_sankey(Ss, 
+                 Qs, 
+                 Ts, 
+                 cell_type_labels=None, 
+                 clustering_type='ml', 
+                 reference_index=None,
+                 save_name=None,
+                 title=None):
+    '''
+    Args:
+        Ss : list of (N) np.ndarrays, of shape (n_t, 2), for each slice, spatial coords
+        Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
+        Ts : list of (N-1) np.ndarray, of shape (r_t, r_{t+1}), for each transition
+        cell_type_labels : list of (N) lists of str, default=None
+        clustering_type : str, 'ml' or 'reference', default='ml'
+        reference_index : int, index of the slice to use as reference, default=None
+                        NOTE: reference_index is required if clustering_type='reference'
+        save_name : str, file name to save the plot, default=None
+        title : str, title for the plot, default=None
+    '''
+    diffmap_from_QT_sankey(Qs=Qs, 
+                    Ts=Ts, 
+                    clustering_type=clustering_type, 
+                    cell_type_labels=cell_type_labels, 
+                    reference_index=reference_index,
+                    title=title,
+                    save_name=save_name)
+
+    plot_clusters_from_QT(Ss=Ss, 
+                          Qs=Qs, 
+                          Ts=Ts, 
+                          cell_type_labels=cell_type_labels, 
+                          clustering_type=clustering_type,
+                          reference_index=reference_index,
+                          title=title, 
+                          save_name=save_name)
+    return None
