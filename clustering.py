@@ -532,7 +532,7 @@ def plot_labeled_differentiation(population_list,
     plt.figure(figsize=(stretch*5 * (N_slices - 1), 10))  # Adjust the figure size
     
     for pair_ind, T in enumerate(transition_list):
-        plt.scatter(stretch*x_positions[pair_ind], 
+        plt.scatter(x_positions[pair_ind], 
                     y_positions[pair_ind],
                     c=[color_dict[label] for label in label_list[pair_ind]],
                     s=dsf*np.array(population_list[pair_ind]),
@@ -540,7 +540,7 @@ def plot_labeled_differentiation(population_list,
                     linewidth=1,
                     zorder=1)
 
-        plt.scatter(stretch*x_positions[pair_ind+1], 
+        plt.scatter(x_positions[pair_ind+1], 
                     y_positions[pair_ind+1],
                     c=[color_dict[label] for label in label_list[pair_ind+1]],
                     s=dsf*np.array(population_list[pair_ind+1]),
@@ -556,7 +556,7 @@ def plot_labeled_differentiation(population_list,
                 for j in range(r2):
                     if T[i, j] > 0:  # Plot line only if T[i, j] is greater than 0
                         # print(len(x_positions), len(x_positions[pair_ind]), len(x_positions[pair_ind+1]))
-                        plt.plot([stretch*x_positions[pair_ind][i], stretch*x_positions[pair_ind+1][j]], 
+                        plt.plot([x_positions[pair_ind][i], x_positions[pair_ind+1][j]], 
                                 [y_positions[pair_ind][i], y_positions[pair_ind+1][j]], 
                                 'k-', lw=T[i, j] * ltf, zorder=0)
         else:
