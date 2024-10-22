@@ -81,15 +81,17 @@ def factor_mats_tens(C, A, B, device, z=None, c=1):
         #V2_A, V2_B = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
 
         # return V1_A with same shape:
-        V1_A = np.ones((A.shape[0], z))
-        V1_B = np.ones((A.shape[0], z))
-        V2_A = np.ones((B.shape[0], z))
-        V2_B = np.ones((B.shape[0], z))
+        V1_A = torch.ones((A.shape[0], z), dtype=torch.double, device=device)
+        V1_B = torch.ones((A.shape[0], z), dtype=torch.double, device=device)
+        V2_A = torch.ones((B.shape[0], z), dtype=torch.double, device=device)
+        V2_B = torch.ones((B.shape[0], z), dtype=torch.double, device=device)
         
         # Normalize factorized components
-        C_factors = (V_C / norm1, U_C / norm1)
-        A_factors = (V1_A / norm2, V1_B / norm2)
-        B_factors = (V2_A / norm3, V2_B / norm3)
+        C_factors = (V_C / norm1, U_C.T / norm1)
+        print('C done')
+        A_factors = (V1_A / norm2, V1_B.T / norm2)
+        B_factors = (V2_A / norm3, V2_B.T / norm3)
+
     
     return C_factors, A_factors, B_factors
 
