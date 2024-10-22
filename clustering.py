@@ -5,6 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
+import matplotlib.patheffects as path_effects  # Import this at the top
+
 
 
 ################################################################################################
@@ -497,7 +499,8 @@ def plot_labeled_differentiation(population_list,
                                  linethick_factor=10,
                                  save_name=None,
                                  title=None,
-                                 stretch=1):
+                                 stretch=1,
+                                 outline=3):
     '''
     Args
         population_list : list of lists, number of spots in each cluster for each slice
@@ -567,10 +570,16 @@ def plot_labeled_differentiation(population_list,
         for i in range(N_slices):
             if cell_type_labels[i] is not None:
                 for j in range(len(population_list[i])):
-                    plt.text(
+                    txt = plt.text(
                         x_positions[i][j], y_positions[i][j], cell_type_labels[i][j],
                         fontsize=12, ha='right', va='bottom'
                     )
+
+                                        # Add path effect for a white outline
+                    txt.set_path_effects([
+                        path_effects.Stroke(linewidth=outline, foreground='white'),  # White outline
+                        path_effects.Normal()  # Normal text on top
+                    ])
 
     # Add titles and labels
     if title:
@@ -602,7 +611,8 @@ def diffmap_from_QT(Qs,
                     title=None,
                     save_name=None, 
                     dsf=1,
-                    stretch=1):
+                    stretch=1,
+                    outline=2):
     '''
     Args:
         Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
@@ -639,7 +649,8 @@ def diffmap_from_QT(Qs,
                                  linethick_factor=10,
                                  title=title,
                                  save_name=save_name,
-                                 stretch=stretch)
+                                 stretch=stretch,
+                                 outline=outline)
     
     return None
 
