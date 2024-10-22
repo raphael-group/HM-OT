@@ -496,7 +496,8 @@ def plot_labeled_differentiation(population_list,
                                  dotsize_factor=1, 
                                  linethick_factor=10,
                                  save_name=None,
-                                 title=None):
+                                 title=None,
+                                 stretch=1):
     '''
     Args
         population_list : list of lists, number of spots in each cluster for each slice
@@ -528,10 +529,10 @@ def plot_labeled_differentiation(population_list,
         y_positions.append(np.arange(len(population)))
         x_positions.append(np.ones(len(population)) * (i))
 
-    plt.figure(figsize=(5 * (N_slices - 1), 10))  # Adjust the figure size
+    plt.figure(figsize=(stretch*5 * (N_slices - 1), 10))  # Adjust the figure size
     
     for pair_ind, T in enumerate(transition_list):
-        plt.scatter(x_positions[pair_ind], 
+        plt.scatter(stretch*x_positions[pair_ind], 
                     y_positions[pair_ind],
                     c=[color_dict[label] for label in label_list[pair_ind]],
                     s=dsf*np.array(population_list[pair_ind]),
@@ -539,7 +540,7 @@ def plot_labeled_differentiation(population_list,
                     linewidth=1,
                     zorder=1)
 
-        plt.scatter(x_positions[pair_ind+1], 
+        plt.scatter(stretch*x_positions[pair_ind+1], 
                     y_positions[pair_ind+1],
                     c=[color_dict[label] for label in label_list[pair_ind+1]],
                     s=dsf*np.array(population_list[pair_ind+1]),
@@ -555,7 +556,7 @@ def plot_labeled_differentiation(population_list,
                 for j in range(r2):
                     if T[i, j] > 0:  # Plot line only if T[i, j] is greater than 0
                         # print(len(x_positions), len(x_positions[pair_ind]), len(x_positions[pair_ind+1]))
-                        plt.plot([x_positions[pair_ind][i], x_positions[pair_ind+1][j]], 
+                        plt.plot([stretch*x_positions[pair_ind][i], stretch*x_positions[pair_ind+1][j]], 
                                 [y_positions[pair_ind][i], y_positions[pair_ind+1][j]], 
                                 'k-', lw=T[i, j] * ltf, zorder=0)
         else:
@@ -599,7 +600,9 @@ def diffmap_from_QT(Qs,
                     clustering_type='ml', 
                     reference_index=None,
                     title=None,
-                    save_name=None, dsf=1):
+                    save_name=None, 
+                    dsf=1,
+                    stretch=1):
     '''
     Args:
         Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
@@ -635,7 +638,8 @@ def diffmap_from_QT(Qs,
                                  dotsize_factor=dsf, 
                                  linethick_factor=10,
                                  title=title,
-                                 save_name=save_name)
+                                 save_name=save_name,
+                                 stretch=stretch)
     
     return None
 
@@ -747,6 +751,7 @@ def plot_labeled_differentiation_sankey(population_list,
                                         reference_index=None,
                                         dotsize_factor=1, 
                                         linethick_factor=10,
+                                        plot_height=600,  # New parameter for height adjustment
                                         save_name=None,
                                         title=None):
     '''
@@ -760,6 +765,7 @@ def plot_labeled_differentiation_sankey(population_list,
         reference_index : int, index of the slice to use as reference, default=None
         dotsize_factor : int, factor to scale the size of the dots, default=1
         linethick_factor : int, factor to scale the thickness of the lines, default=10
+        plot_height : int, height of the plot in pixels, default=600
         save_name : str, file name to save the plot, default=None
 
     Output
@@ -824,11 +830,12 @@ def plot_labeled_differentiation_sankey(population_list,
         )
     ))
 
-    # Add title
-    if title:
-        fig.update_layout(title_text=title, font_size=24)
-    else:
-        fig.update_layout(title_text='Differentiation Map', font_size=24)
+    # Add title and adjust height
+    fig.update_layout(
+        title_text=title if title else 'Differentiation Map',
+        font_size=24,
+        height=plot_height  # Set plot height dynamically
+    )
 
     # Save plot if needed
     if save_name is not None:
@@ -837,7 +844,6 @@ def plot_labeled_differentiation_sankey(population_list,
     fig.show()
 
     return None
-
 def diffmap_from_QT_sankey(Qs, 
                     Ts, 
                     cell_type_labels=None, 
