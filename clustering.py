@@ -850,7 +850,9 @@ def diffmap_from_QT_sankey(Qs,
                     clustering_type='ml', 
                     reference_index=None,
                     title=None,
-                    save_name=None, dsf=1):
+                    save_name=None, 
+                    dsf=1,
+                    plot_height=600):
     '''
     Args:
         Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
@@ -886,6 +888,7 @@ def diffmap_from_QT_sankey(Qs,
                                         clustering_type,
                                         dotsize_factor=dsf, 
                                         linethick_factor=10,
+                                        plot_height=plot_height,
                                         title=title,
                                         save_name=save_name)
     
