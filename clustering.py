@@ -753,6 +753,7 @@ def rgba_to_plotly_string(rgba):
     r, g, b, a = rgba
     return f'rgba({int(r * 255)}, {int(g * 255)}, {int(b * 255)}, {a})'
 
+
 def plot_labeled_differentiation_sankey(population_list,
                                         transition_list,
                                         label_list,
@@ -762,9 +763,11 @@ def plot_labeled_differentiation_sankey(population_list,
                                         reference_index=None,
                                         dotsize_factor=1, 
                                         linethick_factor=10,
-                                        plot_height=600,  # New parameter for height adjustment
+                                        plot_height=600,
+                                        plot_width=1000,
                                         save_name=None,
-                                        title=None):
+                                        title=None,
+                                        save_as_svg=True):  # New parameter for saving as SVG
     '''
     Args
         population_list : list of lists, number of spots in each cluster for each slice
@@ -778,6 +781,7 @@ def plot_labeled_differentiation_sankey(population_list,
         linethick_factor : int, factor to scale the thickness of the lines, default=10
         plot_height : int, height of the plot in pixels, default=600
         save_name : str, file name to save the plot, default=None
+        save_as_svg : bool, if True, saves the plot as SVG for vector editing
 
     Output
 
@@ -845,16 +849,20 @@ def plot_labeled_differentiation_sankey(population_list,
     fig.update_layout(
         title_text=title if title else 'Differentiation Map',
         font_size=24,
-        height=plot_height  # Set plot height dynamically
+        height=plot_height,
+        width=plot_width
     )
 
     # Save plot if needed
-    if save_name is not None:
-        fig.write_image(save_name)
-    
+    if save_as_svg and save_name is not None:
+        fig.write_image(f"{save_name}.svg")  # Save as SVG
+    elif save_as_svg and save_name is None:
+        fig.write_image("diffmap.svg")  # Save as default format (e.g., PNG)
+
     fig.show()
 
     return None
+
 def diffmap_from_QT_sankey(Qs, 
                     Ts, 
                     cell_type_labels=None, 
@@ -863,7 +871,9 @@ def diffmap_from_QT_sankey(Qs,
                     title=None,
                     save_name=None, 
                     dsf=1,
-                    plot_height=600):
+                    plot_height=600,
+                    plot_width=1000,
+                    save_as_svg=True):
     '''
     Args:
         Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
@@ -900,8 +910,10 @@ def diffmap_from_QT_sankey(Qs,
                                         dotsize_factor=dsf, 
                                         linethick_factor=10,
                                         plot_height=plot_height,
+                                        plot_width=plot_width,
                                         title=title,
-                                        save_name=save_name)
+                                        save_name=save_name,
+                                        save_as_svg=save_as_svg)
     
     return None
 

@@ -26,7 +26,7 @@ import plotly.graph_objects as go
 #   misc
 ################################################################################################
 
-def factor_mats(C, A, B, device, z=None, c=1, nidx_1=None, nidx_2=None):    
+def factor_mats(C, A, B, device, z=None, c=1):    
     norm1 = c
     norm2 = A.max()*c
     norm3 = B.max()*c
@@ -53,6 +53,43 @@ def factor_mats(C, A, B, device, z=None, c=1, nidx_1=None, nidx_2=None):
         C_factors, A_factors, B_factors = ((V_C.type(torch.DoubleTensor).to(device)/norm1, U_C.type(torch.DoubleTensor).to(device)/norm1), \
                                        (V1_A.type(torch.DoubleTensor).to(device)/norm2, V1_B.type(torch.DoubleTensor).to(device)/norm2), \
                                        (V2_A.type(torch.DoubleTensor).to(device)/norm3, V2_B.type(torch.DoubleTensor).to(device)/norm3))
+    
+    return C_factors, A_factors, B_factors
+
+def factor_mats_tens(C, A, B, device, z=None, c=1):    
+    # Scaling norms
+    norm1 = c
+    norm2 = A.max() * c
+    norm3 = B.max() * c
+
+    # return dummy versions of A and B that will not be used 
+
+    
+    if z is None:
+        # No low-rank factorization applied to the distance matrix
+        C_factors = (C.to(device) / norm1, torch.eye(C.shape[1], dtype=torch.double, device=device))
+        A_factors = (A.to(device) / norm2, torch.eye(A.shape[1], dtype=torch.double, device=device))
+        B_factors = (B.to(device) / norm3, torch.eye(B.shape[1], dtype=torch.double, device=device))
+    
+    else:
+        # Apply SVD for low-rank factorization
+        u, s, v = torch.svd(C.to(device))
+        V_C, U_C = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
+        #u, s, v = torch.svd(A.to(device))
+        #V1_A, V1_B = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
+        #u, s, v = torch.svd(B.to(device))
+        #V2_A, V2_B = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
+
+        # return V1_A with same shape:
+        V1_A = np.ones((A.shape[0], z))
+        V1_B = np.ones((A.shape[0], z))
+        V2_A = np.ones((B.shape[0], z))
+        V2_B = np.ones((B.shape[0], z))
+        
+        # Normalize factorized components
+        C_factors = (V_C / norm1, U_C / norm1)
+        A_factors = (V1_A / norm2, V1_B / norm2)
+        B_factors = (V2_A / norm3, V2_B / norm3)
     
     return C_factors, A_factors, B_factors
 
