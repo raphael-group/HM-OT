@@ -77,17 +77,17 @@ def factor_mats_tens(C, A, B, device, z=None, c=1):
         V_C, U_C = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
         print(f'Matrix shapes for debugging: {V_C.shape}, {U_C.shape}')
 
-        #u, s, v = torch.svd(A.to(device))
-        #V1_A, V1_B = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
-        #u, s, v = torch.svd(B.to(device))
-        #V2_A, V2_B = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
+        u, s, v = torch.svd(A.to(device))
+        V1_A, V1_B = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
+        u, s, v = torch.svd(B.to(device))
+        V2_A, V2_B = torch.mm(u[:, :z], torch.diag(s[:z])), v[:, :z].T
 
         # return V1_A with same shape:
-        V1_A = torch.ones((A.shape[0], z), dtype=torch.double, device=device)
-        V1_B = torch.ones((B.shape[0], z), dtype=torch.double, device=device)
-        V2_A = torch.ones((A.shape[0], z), dtype=torch.double, device=device).T
-        V2_B = torch.ones((B.shape[0], z), dtype=torch.double, device=device).T
-        print(f'Matrix shapes for debugging: {V1_A.shape}, {V1_B.shape}, {V2_A.shape}, {V2_B.shape}')
+        #V1_A = torch.ones((A.shape[0], z), dtype=torch.double, device=device)
+        #V1_B = torch.ones((B.shape[0], z), dtype=torch.double, device=device).T
+        #V2_A = torch.ones((A.shape[0], z), dtype=torch.double, device=device)
+        #V2_B = torch.ones((B.shape[0], z), dtype=torch.double, device=device).T
+        print(f'Matrix shapes for debugging: {V1_A.shape}, {V2_A.shape}, {V1_B.shape}, {V2_B.shape}')
         
         # Normalize factorized components
         C_factors = (V_C / norm1, U_C / norm1)
