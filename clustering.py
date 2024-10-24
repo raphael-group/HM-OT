@@ -354,25 +354,32 @@ def get_color_dict(labels_list,
     return color_dict
 
 
-def get_scanpy_color_dict(labels_list):
+def hex_to_rgba(hex_color, alpha=1.0):
+    '''Convert hex color (e.g., '#1f77b4') to rgba tuple.'''
+    rgb = mcolors.hex2color(hex_color)  # Convert hex to RGB
+    return (*rgb, alpha)  # Append alpha and return RGBA tuple
+
+
+def get_scanpy_color_dict(labels_list, alpha=1.0):
     '''
     Input
         labels_list : list of np.ndarray, labels for the spots across the slices
+        alpha : float, alpha (transparency) value for the colors
     Output
-        color_dict : dict, dictionary with cluster labels as keys and scanpy-like colors as values
+        color_dict : dict, dictionary with cluster labels as keys and RGBA colors as values
     '''
     unique_values = np.unique(np.concatenate(labels_list))
 
-    # Use Scanpy's predefined palette (uses Tableau20 color palette)
-    # Get scanpy colors, it will return a color palette similar to what scanpy uses for clusters
-    scanpy_colors = sc.pl.palettes.default_64
+    # Use Scanpy's predefined palette (contains 102 colors)
+    scanpy_colors = sc.pl.palettes.default_102
 
-    # If there are more clusters than default scanpy palette, repeat colors
-    colors = [scanpy_colors[i % len(scanpy_colors)] for i in range(len(unique_values))]
+    # Convert hex colors to RGBA format and repeat colors if needed
+    rgba_colors = [hex_to_rgba(scanpy_colors[i % len(scanpy_colors)], alpha) for i in range(len(unique_values))]
 
-    # Make color_dict for the scanpy-like color map
-    color_dict = dict(zip(unique_values, colors))
+    # Create a color dictionary mapping unique values to RGBA colors
+    color_dict = dict(zip(unique_values, rgba_colors))
     return color_dict
+
 
 
 
@@ -778,7 +785,6 @@ def rgba_to_plotly_string(rgba):
     ''' Convert a list of [r, g, b, a] values to an rgba string for plotly '''
     r, g, b, a = rgba
     return f'rgba({int(r * 255)}, {int(g * 255)}, {int(b * 255)}, {a})'
-
 
 def plot_labeled_differentiation_sankey(population_list,
                                         transition_list,
