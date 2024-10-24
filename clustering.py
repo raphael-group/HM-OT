@@ -1026,6 +1026,7 @@ def diffmap_from_QT_sankey(Qs,
                     plot_width=1000,
                     save_as_svg=True,
                     threshold=0,
+                    cmap='tab',
                     order=False):  # New parameter for thresholding transitions
     '''
     Args:
@@ -1048,7 +1049,7 @@ def diffmap_from_QT_sankey(Qs,
         raise ValueError('Invalid clustering type')
 
     # get diffmap inputs
-    population_list, labels_list, color_dict = get_diffmap_inputs(clustering_list, clustering_type)
+    population_list, labels_list, color_dict = get_diffmap_inputs(clustering_list, clustering_type, cmap=cmap)
 
     # make transition_list
     transition_list = Ts
