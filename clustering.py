@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import matplotlib.patheffects as path_effects  
 import re
 
+import scanpy as sc
 
 
 
@@ -352,6 +353,29 @@ def get_color_dict(labels_list,
     color_dict = dict(zip(unique_values, colors))
     return color_dict
 
+
+def get_scanpy_color_dict(labels_list):
+    '''
+    Input
+        labels_list : list of np.ndarray, labels for the spots across the slices
+    Output
+        color_dict : dict, dictionary with cluster labels as keys and scanpy-like colors as values
+    '''
+    unique_values = np.unique(np.concatenate(labels_list))
+
+    # Use Scanpy's predefined palette (uses Tableau20 color palette)
+    # Get scanpy colors, it will return a color palette similar to what scanpy uses for clusters
+    scanpy_colors = sc.pl.palettes.default_64
+
+    # If there are more clusters than default scanpy palette, repeat colors
+    colors = [scanpy_colors[i % len(scanpy_colors)] for i in range(len(unique_values))]
+
+    # Make color_dict for the scanpy-like color map
+    color_dict = dict(zip(unique_values, colors))
+    return color_dict
+
+
+
 def get_diffmap_inputs(clustering_list, 
                        clustering_type, 
                        cmap='tab'):
@@ -386,7 +410,7 @@ def get_diffmap_inputs(clustering_list,
         pass
 
     # make color_dict
-    color_dict = get_color_dict(labels_list, cmap=cmap)
+    color_dict = get_scanpy_color_dict(labels_list)
 
     return population_list, labels_list, color_dict
 
