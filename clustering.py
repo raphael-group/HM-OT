@@ -5,7 +5,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
-import matplotlib.patheffects as path_effects  # Import this at the top
+import matplotlib.patheffects as path_effects  
+import re
+
 
 
 
@@ -767,7 +769,8 @@ def plot_labeled_differentiation_sankey(population_list,
                                         plot_width=1000,
                                         save_name=None,
                                         title=None,
-                                        save_as_svg=True):  # New parameter for saving as SVG
+                                        save_as_svg=True,  # New parameter for saving as SVG
+                                        threshold=0):  # New parameter for thresholding transitions
     '''
     Args
         population_list : list of lists, number of spots in each cluster for each slice
@@ -782,6 +785,7 @@ def plot_labeled_differentiation_sankey(population_list,
         plot_height : int, height of the plot in pixels, default=600
         save_name : str, file name to save the plot, default=None
         save_as_svg : bool, if True, saves the plot as SVG for vector editing
+        threshold : float, minimum value of transitions to include in the plot, default=0
 
     Output
 
@@ -822,7 +826,7 @@ def plot_labeled_differentiation_sankey(population_list,
 
         for i in range(r1):
             for j in range(r2):
-                if T[i, j] > 0:  # Only add non-zero transitions
+                if T[i, j] > threshold:  # Apply threshold here
                     source_node = node_idx_map[(pair_ind, i)]
                     target_node = node_idx_map[(pair_ind + 1, j)]
                     link_sources.append(source_node)
@@ -863,6 +867,153 @@ def plot_labeled_differentiation_sankey(population_list,
 
     return None
 
+
+
+def alphabetic_key(label):
+    ''' Custom key to sort labels alphabetically, ignoring non-alphabetic characters using regex '''
+    # Use regular expression to remove non-alphabetic characters
+    return re.sub('[^a-zA-Z]', '', label)
+
+
+def plot_labeled_differentiation_sankey_sorted(population_list,
+                                               transition_list,
+                                               label_list,
+                                               color_dict, 
+                                               cell_type_labels=None,  # New parameter for node labels
+                                               clustering_type='ml',
+                                               reference_index=None,
+                                               dotsize_factor=1, 
+                                               linethick_factor=10,
+                                               plot_height=600,  # New parameter for height adjustment
+                                               plot_width=800,   # New parameter for width adjustment
+                                               save_name=None,
+                                               title=None,
+                                               save_as_svg=False,
+                                               threshold=0):  # New parameter for saving as SVG
+    '''
+    Args
+        population_list : list of lists, number of spots in each cluster for each slice
+        transition_list : list of np.ndarrays, cell type coupling matrices between consecutive slices
+        label_list : list of lists, unique cluster labels (ints) for each slice
+        color_dict : dict, dictionary with cluster labels as keys and colors as values
+        cell_type_labels : list of lists of str, default=None or None
+        clustering_type : str, 'ml' or 'reference', default='ml'
+        reference_index : int, index of the slice to use as reference, default=None
+        dotsize_factor : int, factor to scale the size of the dots, default=1
+        linethick_factor : int, factor to scale the thickness of the lines, default=10
+        plot_height : int, height of the plot in pixels, default=600
+        plot_width : int, width of the plot in pixels, default=800
+        save_name : str, file name to save the plot, default=None
+        save_as_svg : bool, if True, saves the plot as SVG for vector editing
+
+    Output
+
+    Description
+    '''
+
+    N_slices = len(population_list)
+    
+    # Prepare node and link data for Sankey plot
+    node_labels = []
+    link_sources = []
+    link_targets = []
+    link_values = []
+    node_colors = []
+    node_x = []
+    node_y = []
+    
+    node_idx_map = {}  # To keep track of node indices for different slices
+    current_node_idx = 0
+    
+    # Step 1: Sort labels using the custom key that ignores non-alphabetic characters
+    sorted_label_list = []
+    sorted_indices_list = []
+    
+    for slice_idx, labels in enumerate(label_list):
+        # Get sorted indices based on the custom alphabetic key, with fallback if cell_type_labels is None
+        sorted_indices = sorted(
+            range(len(labels)), 
+            key=lambda x: alphabetic_key(cell_type_labels[slice_idx][x] if cell_type_labels and cell_type_labels[slice_idx] is not None else str(labels[x]))
+        )
+        sorted_indices_list.append(sorted_indices)
+        
+        # Sort the labels according to the custom key, handle None case
+        sorted_labels = [
+            cell_type_labels[slice_idx][i] if cell_type_labels and cell_type_labels[slice_idx] is not None else str(labels[i]) 
+            for i in sorted_indices
+        ]
+        sorted_label_list.append(sorted_labels)
+
+        # Step 2: Compute vertical positions (y-coordinates) for sorted labels
+        num_nodes = len(sorted_labels)
+        
+        # Dynamically adjust the spacing between nodes to avoid overlap
+        # We space the y positions from 1 to 0, but with some additional padding
+        padding = 0.1 / num_nodes  # This will introduce some space between nodes to prevent overlap
+        y_positions = np.linspace(1 - padding, padding, num_nodes)  # Vertically space with a margin
+        
+        # Build the nodes based on sorted labels and assign y-coordinates
+        for idx, i in enumerate(sorted_indices):
+            node_label = cell_type_labels[slice_idx][i] if cell_type_labels and cell_type_labels[slice_idx] is not None else str(labels[i])
+            node_labels.append(node_label)
+            node_idx_map[(slice_idx, i)] = current_node_idx  # Map to node index
+            node_colors.append(rgba_to_plotly_string(color_dict[labels[i]]))
+            node_x.append(slice_idx / (N_slices - 1))  # Evenly spaced x-coordinates
+            node_y.append(y_positions[idx])  # Assign y-coordinates with spacing to prevent overlap
+            current_node_idx += 1
+
+    # Step 3: Reorder the transition links to reflect sorted indices
+    for pair_ind, T in enumerate(transition_list):
+        r1 = T.shape[0]
+        r2 = T.shape[1]
+        for i in range(r1):
+            for j in range(r2):
+                if T[i, j] > threshold:  # Only add non-zero transitions
+                    # Map the original indices to sorted indices
+                    sorted_source_idx = sorted_indices_list[pair_ind].index(i)
+                    sorted_target_idx = sorted_indices_list[pair_ind + 1].index(j)
+                    source_node = node_idx_map[(pair_ind, sorted_source_idx)]
+                    target_node = node_idx_map[(pair_ind + 1, sorted_target_idx)]
+                    link_sources.append(source_node)
+                    link_targets.append(target_node)
+                    link_values.append(T[i, j] * linethick_factor)
+
+    # Step 4: Create the Sankey plot with manual x and y coordinates
+    fig = go.Figure(go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color="black", width=0.5),
+            label=node_labels,
+            color=node_colors,  # Correctly formatted colors
+            x=node_x,  # Manual x-coordinates
+            y=node_y   # Manual y-coordinates for descending alphabetical order with spacing
+        ),
+        link=dict(
+            source=link_sources,  # Indices of source nodes
+            target=link_targets,  # Indices of target nodes
+            value=link_values     # Flow values for transitions
+        )
+    ))
+
+    # Add title and adjust height and width
+    fig.update_layout(
+        title_text=title if title else 'Differentiation Map',
+        font_size=24,
+        height=plot_height,  # Set plot height dynamically
+        width=plot_width
+    )
+
+    # Save plot if needed
+    if save_as_svg and save_name is not None:
+        fig.write_image(f"{save_name}.svg")  # Save as SVG
+    elif save_as_svg and save_name is None:
+        fig.write_image("diffmap.svg")  # Save as default format (e.g., PNG)
+
+    fig.show()
+
+    return None
+
 def diffmap_from_QT_sankey(Qs, 
                     Ts, 
                     cell_type_labels=None, 
@@ -873,7 +1024,9 @@ def diffmap_from_QT_sankey(Qs,
                     dsf=1,
                     plot_height=600,
                     plot_width=1000,
-                    save_as_svg=True):
+                    save_as_svg=True,
+                    threshold=0,
+                    order=False):  # New parameter for thresholding transitions
     '''
     Args:
         Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
@@ -901,56 +1054,34 @@ def diffmap_from_QT_sankey(Qs,
     transition_list = Ts
 
     # Call the Sankey plot function instead of the previous one
-    plot_labeled_differentiation_sankey(population_list,
-                                        transition_list,
-                                        labels_list,
-                                        color_dict, 
-                                        cell_type_labels,
-                                        clustering_type,
-                                        dotsize_factor=dsf, 
-                                        linethick_factor=10,
-                                        plot_height=plot_height,
-                                        plot_width=plot_width,
-                                        title=title,
-                                        save_name=save_name,
-                                        save_as_svg=save_as_svg)
+    if order==True:
+        plot_labeled_differentiation_sankey_sorted(population_list,
+                                                transition_list,
+                                                labels_list,
+                                                color_dict, 
+                                                cell_type_labels,
+                                                clustering_type,
+                                                dotsize_factor=dsf, 
+                                                plot_height=plot_height,
+                                                plot_width=plot_width,
+                                                title=title,
+                                                save_name=save_name,
+                                                save_as_svg=save_as_svg,
+                                                threshold=threshold)
+    else:
+        plot_labeled_differentiation_sankey(population_list,
+                                            transition_list,
+                                            labels_list,
+                                            color_dict, 
+                                            cell_type_labels,
+                                            clustering_type,
+                                            dotsize_factor=dsf, 
+                                            linethick_factor=10,
+                                            plot_height=plot_height,
+                                            plot_width=plot_width,
+                                            title=title,
+                                            save_name=save_name,
+                                            save_as_svg=save_as_svg,
+                                            threshold=threshold)  
     
-    return None
-
-def both_from_QT_sankey(Ss, 
-                 Qs, 
-                 Ts, 
-                 cell_type_labels=None, 
-                 clustering_type='ml', 
-                 reference_index=None,
-                 save_name=None,
-                 title=None):
-    '''
-    Args:
-        Ss : list of (N) np.ndarrays, of shape (n_t, 2), for each slice, spatial coords
-        Qs : list of (N) np.ndarrays, of shape (n_t, r_t), for each slice
-        Ts : list of (N-1) np.ndarray, of shape (r_t, r_{t+1}), for each transition
-        cell_type_labels : list of (N) lists of str, default=None
-        clustering_type : str, 'ml' or 'reference', default='ml'
-        reference_index : int, index of the slice to use as reference, default=None
-                        NOTE: reference_index is required if clustering_type='reference'
-        save_name : str, file name to save the plot, default=None
-        title : str, title for the plot, default=None
-    '''
-    diffmap_from_QT_sankey(Qs=Qs, 
-                    Ts=Ts, 
-                    clustering_type=clustering_type, 
-                    cell_type_labels=cell_type_labels, 
-                    reference_index=reference_index,
-                    title=title,
-                    save_name=save_name)
-
-    plot_clusters_from_QT(Ss=Ss, 
-                          Qs=Qs, 
-                          Ts=Ts, 
-                          cell_type_labels=cell_type_labels, 
-                          clustering_type=clustering_type,
-                          reference_index=reference_index,
-                          title=title, 
-                          save_name=save_name)
     return None
