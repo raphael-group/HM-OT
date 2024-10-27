@@ -1,2 +1,2 @@
-# WDM
-Wasserstein differentiation mapping through latent optimal transport.
+# HM-OT
+Hidden-Markov Optimal Transport (HM-OT): given a time-series of datasets, learns a series of latent representations of each dataset and a series of latent Markov transition kernels for the clusters these representations map to. For single-cell transcriptomics, this jointly learns latent cell-states for all times t, and the transition matrix between these cell-states which is of least-action with respect to the optimal transport (OT) principle.
