@@ -7,7 +7,82 @@ from sklearn.cluster import KMeans
 from tqdm import tqdm
 import clustering
 from sklearn.metrics import adjusted_mutual_info_score
-import FRLC_LRDist
+import pandas as pd
+import scanpy as sc
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+
+def norm_factors(tup, c):
+    return (tup[0] / c, tup[1] / c)
+
+def _compute_Q(_adata, cell_type_key):
+    
+    encoder = OneHotEncoder(sparse_output=False)
+    ys_onehot = encoder.fit_transform(_adata.obs[cell_type_key].values.reshape(-1, 1))
+    _Q = ys_onehot / np.sum(ys_onehot)
+    label = list(encoder.categories_[0])
+    
+    return _Q, label
+
+def convert_adata(adata, replicates, timepoints, \
+                  cell_type_key = 'cellstate', timepoint_key = 'timepoint', \
+                  replicate_key = 'orig.ident', spatial_key = ['x_loc', 'y_loc'], \
+                  feature_key = 'X_pca', dtype=torch.float32, compute_Q = True,
+                  spatial = True, dist_rank=100, dist_eps=0.02
+                 ):
+    
+    N = len(replicates)
+    
+    A_factors_sequence = []
+    
+    features_sequence = []
+    spatial_sequence = []
+    
+    adata_replicates = []
+    Qs = [None]*N
+    labels = [None]*N
+    
+    for idx, (rep, time) in enumerate(zip(replicates, timepoints)):
+        
+        adata_t = adata[adata.obs[timepoint_key] == time]
+        adata_rep = adata_t[adata_t.obs[replicate_key] == rep]
+        adata_replicates.append(adata_rep)
+        
+        if spatial:
+            ### Compute low-rank approximation to the distance matrix and appropriately normalize
+            spatial_coords = torch.tensor( adata_rep.obs[spatial_key].to_numpy(), dtype=dtype )
+            A_rep = low_rank_distance_factorization( spatial_coords, spatial_coords, dist_rank, dist_eps )
+            c = estimate_max_norm( A_rep[0] , A_rep[1] )
+            A_rep = norm_factors( A_rep, c**1/2 )
+            A_factors_sequence.append( (A_rep[0].to(dtype), A_rep[1].to(dtype)) )
+            spatial_sequence.append(spatial_coords.numpy())
+        else:
+            A_factors_sequence.append( (None, None) )
+        
+        feature_coords = torch.tensor(adata_rep.obsm[feature_key], dtype=dtype)
+        features_sequence.append(feature_coords)
+        
+        if compute_Q:
+            _Q, label = _compute_Q(adata_rep, cell_type_key=cell_type_key)
+            Qs[idx] = torch.tensor(_Q, dtype=dtype)
+            labels[idx] = label
+    
+    C_factors_sequence = []
+    rank_list = []
+    
+    for i in range(0, N-1, 1):
+        
+        idx1, idx2 = i, i+1
+        
+        features1, features2 = features_sequence[idx1], features_sequence[idx2]
+        C_rep = low_rank_distance_factorization( features1, features2, dist_rank, dist_eps )
+        c = estimate_max_norm( C_rep[0] , C_rep[1] )
+        C_rep = norm_factors( C_rep, c**1/2 )
+        C_factors_sequence.append( (C_rep[0].to(dtype), C_rep[1].to(dtype)))
+
+        rank_list.append( (len(labels[idx1]), len(labels[idx2]) ) )
+    
+    return C_factors_sequence, A_factors_sequence, Qs, labels, rank_list, spatial_sequence
+
 
 
 def low_rank_distance_factorization(X1, X2, r, eps, device='cpu', dtype=torch.float64):
@@ -117,46 +192,14 @@ def hadamard_lr(A1, A2, B1, B2, device='cpu'):
     
     return M1_tilde, M2_tilde
 
-'''
-def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B):
-    n = V_C.shape[0]
-    scale = 1/(V_C.shape[0]*U_C.shape[1])**1/2
-    
-    norm_constant1 = ( torch.trace( (M1_A.T @ M1_A) @ (M1_B.T @ M1_B) ) )**1/2
-    norm_constant2 = ( torch.trace( (M2_A.T @ M2_A) @ (M2_B.T @ M2_B) ) )**1/2
-    
-    norm_constant = max([norm_constant1, norm_constant2])
-    
-    M1_A, M1_B = M1_A/(norm_constant*scale), M1_B/(norm_constant*scale)
-    M2_A, M2_B = M2_A/(norm_constant*scale), M2_B/(norm_constant*scale)
-    
-    norm_constant = ( torch.trace( (V_C.T @ V_C) @ (U_C @ U_C.T) ) )**1/2 * (n)**1/2
-    V_C, U_C = V_C/(norm_constant*scale), U_C/(norm_constant*scale)
-    return V_C, U_C, M1_A, M1_B, M2_A, M2_B
-
-def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B):
-    n = V_C.shape[0]
-    scale = 1/(V_C.shape[0]*U_C.shape[1])**1/2
-    
-    norm_constant1 = ( torch.trace( (M1_A.T @ M1_A) @ (M1_B.T @ M1_B) ) )**1/2
-    norm_constant2 = ( torch.trace( (M2_A.T @ M2_A) @ (M2_B.T @ M2_B) ) )**1/2
-    
-    norm_constant = max([norm_constant1, norm_constant2])
-    
-    M1_A, M1_B = M1_A/(norm_constant*scale), M1_B/(norm_constant*scale)
-    M2_A, M2_B = M2_A/(norm_constant*scale), M2_B/(norm_constant*scale)
-    
-    norm_constant = ( torch.trace( (V_C.T @ V_C) @ (U_C @ U_C.T) ) )**1/2 * (n)**1/2
-    V_C, U_C = V_C/(norm_constant*scale), U_C/(norm_constant*scale)
-    return V_C, U_C, M1_A, M1_B, M2_A, M2_B
-'''
-
 def estimate_max_norm(A, B):
+    
     assert A.shape[1] == B.shape[0], 'Inner matrix dimensions must equal.'
     col_norms = torch.linalg.norm(A, axis=0)
     row_norms = torch.linalg.norm(B, axis=1)
     colrow_prods = col_norms*row_norms
     C_max = torch.max(colrow_prods)
+    
     return C_max
 
 def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B, device='cpu'):
@@ -169,13 +212,7 @@ def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B, device='cpu'):
     V_C, U_C = V_C/norm_constant1, U_C/norm_constant1
     M1_A, M1_B = M1_A/norm_constant2, M1_B/norm_constant2
     M2_A, M2_B = M2_A/norm_constant2, M2_B/norm_constant3
-    '''
-    Q,R,T, errs = FRLC_LRDist.FRLC_LR_opt((V_C, U_C), (M1_A, M1_B), (M2_A, M2_B), r=2, max_iter=2, \
-                                          min_iter=2, printCost=True, device=device, returnFull=False)
-    del Q,R,T
-    cGW = errs['GW_cost'][0]
-    cW = errs['W_cost'][0]
-    '''
+    
     c = (norm_constant1 / norm_constant2**2)**1/2
     V_C, U_C = V_C*c, U_C*c
     
@@ -193,55 +230,6 @@ def scale_matrix_rows(matrix):
     matrix_scaled = matrix / max_norm
     return matrix_scaled
 
-
-'''
-def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
-              feature_handle1 = 'slice1_feature.npy', feature_handle2 = 'slice2_feature.npy',
-             spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True):
-    
-    data_t1 = np.load(filehandle_embryo + feature_handle1)
-    data_t2 = np.load(filehandle_embryo + feature_handle2)
-    
-    n, m = data_t1.shape[0], data_t2.shape[0]
-    data_t1 = scale_matrix_rows(data_t1)
-    data_t2 = scale_matrix_rows(data_t2)
-    
-    data_t1 = torch.from_numpy(data_t1).to(device)
-    data_t2 = torch.from_numpy(data_t2).to(device)
-    
-    spatial_t1 =  torch.from_numpy(np.load(filehandle_embryo + spatial_handle1)).to(device)
-    spatial_t2 =  torch.from_numpy(np.load(filehandle_embryo + spatial_handle2)).to(device)
-    
-    # Factorize C
-    V_C, U_C = low_rank_distance_factorization(data_t1, data_t2, r, eps, device=device)
-    
-    n, m = V_C.shape[0], U_C.shape[1]
-    
-    # M1 matrix
-    V_A, U_A = low_rank_distance_factorization(data_t1, data_t1, r2, eps, device=device)
-    V_B, U_B = low_rank_distance_factorization(spatial_t1, spatial_t1, r2, eps, device=device)
-    
-    if hadamard:
-        M1_A, M1_B = hadamard_lr(V_A, U_A.T, V_B, U_B.T, device=device)
-    else:
-        # Default to spatial dist
-        M1_A, M1_B = V_B, U_B.T
-    
-    # M2 matrix
-    V_A, U_A = low_rank_distance_factorization(data_t2, data_t2, r2, eps, device=device)
-    V_B, U_B = low_rank_distance_factorization(spatial_t2, spatial_t2, r2, eps, device=device)
-    
-    if hadamard:
-        M2_A, M2_B = hadamard_lr(V_A, U_A.T, V_B, U_B.T, device=device)
-    else:
-        # Default to spatial dist
-        M2_A, M2_B = V_B, U_B.T
-    
-    del V_A, U_A, V_B, U_B
-    
-    V_C, U_C, M1_A, M1_B, M2_A, M2_B = normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B)
-    return V_C, U_C, M1_A, M1_B, M2_A, M2_B
-'''
 def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
               feature_handle1 = 'slice1_feature.npy', feature_handle2 = 'slice2_feature.npy',
              spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True):
