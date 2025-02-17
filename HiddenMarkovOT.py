@@ -10,10 +10,69 @@ from FRLC import FRLC_LR_opt
 from FRLC_multimarginal import FRLC_LR_opt_multimarginal
 
 class HM_OT:
+
+    """
+    A class to compute a full clustering (Q/Lambda) sequence and transition (T) sequence to 
+    minimize a joint Wasserstein objective across multiple steps (or time points).
     
-    '''
-    Code to compute the full cluster (Q/Lambda) and transition (T) sequence to minimize a joint Wasserstein objective.
-    '''
+    This class implements a Forward-Backward-like procedure (alpha pass and beta pass) for 
+    low-rank factored regularized linear cost (FRLC) optimal transport. It then performs 
+    a gamma smoothing step to refine the clustering matrices (Q) and transitions (T).
+    
+    Attributes:
+        N (int): 
+            Number of transitions (or time steps) inferred from `rank_list` length.
+        a (torch.Tensor, optional): 
+            First marginal of the optimal transport problem (if needed).
+        b (torch.Tensor, optional): 
+            Second marginal of the optimal transport problem (if needed).
+        tau_in (float): 
+            Inner marginal parameter for FRLC optimization.
+        tau_out (int): 
+            Outer marginal parameter for FRLC optimization.
+        gamma (float): 
+            Entropic regularization parameter (step-size) for the FRLC coordinate mirror-descent problem.
+        max_iter (int): 
+            Maximum number of iterations for each FRLC solver call.
+        min_iter (int): 
+            Minimum number of iterations for each FRLC solver call.
+        device (str): 
+            PyTorch device used for tensor operations ('cpu' or 'cuda').
+        dtype (torch.dtype): 
+            Data type used for PyTorch tensors.
+        printCost (bool): 
+            Whether to print the cost at each iteration.
+        returnFull (bool): 
+            Whether to return the full transport plan or just factors.
+        alpha (float): 
+            Mixture weight parameter for FRLC optimization (e.g., a ratio between W and GW terms).
+        initialization (str): 
+            Method to initialize the low-rank factors for the solver. 
+                              E.g., 'Full' or any custom initialization.
+        init_args (tuple, optional): 
+            Additional arguments for initialization of (Q, R, T) variables.
+        
+        Q_alphas (list): Stores the forward pass Q/R clusterings.
+        T_alphas (list): Stores the forward pass transition matrices.
+        Q_betas (list): Stores the backward pass Q/R clusterings.
+        T_betas (list): Stores the backward pass transition matrices.
+        Q_gammas (list): Stores the smoothed clusterings after alpha-beta passes.
+        T_gammas (list): Stores the smoothed transition matrices after gamma smoothing.
+        errs (dict): Tracks the error/cost values during smoothing, with keys:
+                     'total_cost', 'W_cost', 'GW_cost'.
+                
+    Example:
+        >>> # Suppose you have a list of rank pairs, cost factors, and distribution factors
+        >>> rank_list = [(10, 8), (8, 8), (8, 6)]  # For each transition
+        >>> C_factors_sequence = [C0, C1, C2]     # Cost factors for each step
+        >>> A_factors_sequence = [A0, A1, A2, A3] # Factor sets for consecutive distributions
+        >>> hm_ot = HM_OT(rank_list, a=a, b=b, tau_in=0.0001, tau_out=75, 
+        ...               gamma=90, max_iter=200, device='cpu')
+        >>> hm_ot.gamma_smoothing(C_factors_sequence, A_factors_sequence)
+        >>> # Access smoothed Q and T
+        >>> Qs = hm_ot.Q_gammas
+        >>> Ts = hm_ot.T_gammas
+    """
     
     # Alpha-pass variables
     Q_alphas = []
@@ -31,6 +90,43 @@ class HM_OT:
                   gamma=90, max_iter=200, min_iter=200, device='cpu', dtype=torch.float64, \
                  printCost=True, returnFull=True, alpha=0.2, \
                   initialization='Full', init_args = None):
+
+        """
+        Initializes the HM_OT class with the given parameters.
+        
+        Args:
+            rank_list (list of tuples): 
+                Each tuple (r1, r2) defines the low-rank factors 
+                    dimensions for consecutive distributions at time t.
+            a (torch.Tensor, optional): 
+                First marginal distribution vector.
+            b (torch.Tensor, optional): 
+                Second marginal distribution vector.
+            tau_in (float, optional): 
+                Inner marginal regularization parameter for FRLC optimization. Defaults to 0.0001.
+            tau_out (int, optional): 
+                Outer marginal regularization parameter FRLC optimization. Defaults to 75.
+            gamma (float, optional): 
+                Entropic regularization parameter / step-size for the FRLC problem. Defaults to 90.
+            max_iter (int, optional): 
+                Maximum number of iterations for the FRLC solver. Defaults to 200.
+            min_iter (int, optional): 
+                Minimum number of iterations for the FRLC solver. Defaults to 200.
+            device (str, optional): 
+                Device for PyTorch tensors. Defaults to 'cpu'.
+            dtype (torch.dtype, optional): 
+                Data type for PyTorch tensors. Defaults to torch.float64.
+            printCost (bool, optional): 
+                Whether to print cost info at each iteration. Defaults to True.
+            returnFull (bool, optional): 
+                Whether to return full transport plan or just factors. Defaults to True.
+            alpha (float, optional): 
+                Mixture weight for combining W and GW costs in FRLC. Defaults to 0.2.
+            initialization (str, optional): 
+                Strategy for initializing the low-rank factors. Defaults to 'Full'.
+            init_args (tuple, optional): 
+                Additional arguments for custom initialization of (Q, R, T). Defaults to None.
+        """
         
         self.rank_list=rank_list
         self.N = len(self.rank_list)
@@ -51,20 +147,50 @@ class HM_OT:
 
     
     def alpha_pass(self, C_factors_sequence, A_factors_sequence):
-
+        """
+        Executes the forward (alpha) pass to compute clusterings (Q) and transitions (T).
+        
+        The alpha pass starts from the initial time step and moves forward, 
+        using `FRLC_LR_opt` to optimize Q, R, and T (or partial subsets, depending 
+        on the iteration).
+        
+        Args:
+            C_factors_sequence (list): List of tuples of low-rank cost factor tensors for each pair of time points (expression).
+            A_factors_sequence (list): List of tuples of low-rank cost factor tensors for each pair of time points (spatial).
+        
+        Returns:
+            None. Populates `self.Q_alphas` and `self.T_alphas` in place.
+        """
+        
         self.Q_alphas = []
         self.T_alphas = []
 
         C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
         r1, r2 = self.rank_list[0]
         
-        Q,R,T, errs = FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
-                                                  r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
-                                                 returnFull=self.returnFull, alpha=self.alpha, \
-                                                min_iter=self.min_iter, initialization=self.initialization, \
-                                                  tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                dtype=self.dtype, updateR = True, updateQ = True, updateT = True, \
-                                              init_args=(None,None,None), printCost=self.printCost)
+        Q,R,T, errs = FRLC_LR_opt(C_factors,
+                                  A_factors,
+                                  B_factors,
+                                  a=self.a,
+                                  b=self.b,
+                                  r=r1,
+                                  r2=r2,
+                                  max_iter=self.max_iter,
+                                  device=self.device,
+                                  returnFull=self.returnFull,
+                                  alpha=self.alpha,
+                                  min_iter=self.min_iter,
+                                  initialization=self.initialization,
+                                  tau_out=self.tau_out,
+                                  tau_in=self.tau_in,
+                                  gamma=self.gamma,
+                                  dtype=self.dtype,
+                                  updateR = True,
+                                  updateQ = True,
+                                  updateT = True,
+                                  init_args=(None,None,None),
+                                  printCost=self.printCost)
+        
 
         self.Q_alphas.append(Q)
         self.Q_alphas.append(R)
@@ -78,13 +204,28 @@ class HM_OT:
             Q0 = self.Q_alphas[-1]
             init_args = (Q0, None, None)
             
-            Q,R,T, errs = FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
-                                                          r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
-                                                         returnFull=self.returnFull, alpha=self.alpha, \
-                                                        min_iter=self.min_iter, initialization=self.initialization, \
-                                                          tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                        dtype=self.dtype, updateR = True, updateQ = False, updateT = True, \
-                                                  init_args=init_args, printCost=self.printCost)
+            Q,R,T, errs = FRLC_LR_opt(C_factors, 
+                                      A_factors,
+                                      B_factors, 
+                                      a=self.a, 
+                                      b=self.b,
+                                      r=r1,
+                                      r2=r2, 
+                                      max_iter=self.max_iter, 
+                                      device=self.device, 
+                                      returnFull=self.returnFull, alpha=self.alpha, 
+                                      min_iter=self.min_iter, 
+                                      initialization=self.initialization,
+                                      tau_out=self.tau_out,
+                                      tau_in=self.tau_in,
+                                      gamma=self.gamma,
+                                      dtype=self.dtype,
+                                      updateR = True,
+                                      updateQ = False,
+                                      updateT = True,
+                                      init_args=init_args,
+                                      printCost=self.printCost)
+            
             self.Q_alphas.append(R)
             self.T_alphas.append(T)
             
@@ -92,7 +233,21 @@ class HM_OT:
 
     
     def beta_pass(self, C_factors_sequence, A_factors_sequence):
+        
+        """
+        Executes the backward (beta) pass to compute clusterings (Q) and transitions (T).
+        
+        The beta pass starts from the final time step and moves backward, using `FRLC_LR_opt`
+        to optimize Q, R, and T (or partial subsets, depending on the iteration).
 
+        Args:
+            C_factors_sequence (list): List of tuples of low-rank cost factor tensors for each pair of time points (expression).
+            A_factors_sequence (list): List of tuples of low-rank cost factor tensors for each pair of time points (spatial).
+        
+        Returns:
+            None. Populates `self.Q_betas` and `self.T_betas` in place.
+        """
+        
         self.Q_betas = []
         self.T_betas = []
         
@@ -135,6 +290,18 @@ class HM_OT:
     
     def impute_smoothed_transitions(self, C_factors_sequence, A_factors_sequence):
 
+        """
+        Given a finalized sequence of clusterings `self.Q_gammas`, computes the 
+        transition matrices (T) between each pair of consecutive clusterings.
+        
+        Args:
+            C_factors_sequence (list): List of tuples of low-rank cost factor tensors for each pair of time points (expression).
+            A_factors_sequence (list): List of tuples of low-rank cost factor tensors for each pair of time points (spatial).
+        
+        Returns:
+            None. Populates `self.T_gammas` in place and updates `self.errs` with cost values.
+        """
+        
         self.T_gammas = []
         self.errs = {'total_cost':[],
                      'W_cost':[],
@@ -169,13 +336,32 @@ class HM_OT:
     
     def gamma_smoothing(self, C_factors_sequence, A_factors_sequence):
 
-        self.Q_gammas = []
+        """
+        Performs the Forward-Backward smoothing procedure (alpha pass + beta pass) 
+        followed by a multi-marginal solver to refine the clustering matrices (Q) 
+        at each time step.
         
+        The smoothed Qs (Q_gammas) are then used to compute the transitions (T_gammas).
+        
+        Args:
+            C_factors_sequence (list): List of cost factor tensors for each transition.
+            A_factors_sequence (list): List of distribution factor tensors for each time step.
+        
+        Returns:
+            None. Populates `self.Q_gammas` and `self.T_gammas` with smoothed clusterings
+            and transitions, respectively. Also updates `self.errs` with cost values.
+        """
+
+         # Clear Q_gammas
+        self.Q_gammas = []
+
+        # Run alpha and beta passes
         self.alpha_pass(C_factors_sequence, A_factors_sequence)
         self.beta_pass(C_factors_sequence, A_factors_sequence)
 
         self.Q_gammas.append(self.Q_alphas[0])
         
+        # Multi-marginal smoothing for each time step
         for i in range(1, self.N, 1):
             
             C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[i-1], A_factors_sequence[i-1], A_factors_sequence[i]
@@ -199,6 +385,7 @@ class HM_OT:
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
+        
         # Clearing alpha matrices for space 
         self.Q_alphas = []
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
@@ -208,6 +395,20 @@ class HM_OT:
     
     def impute_annotated_transitions(self, C_factors_sequence, A_factors_sequence, Qs_annotated):
 
+        """
+        Given an externally specified sequence of clusterings (e.g., from annotations), 
+        compute the optimal transition matrices (T) that connect consecutive Qs.
+
+        Args:
+            C_factors_sequence (list): List of cost factor tensors for each transition.
+            A_factors_sequence (list): List of distribution factor tensors for each time step.
+            Qs_annotated (list): A list of externally provided cluster matrices Q at each time step.
+        
+        Returns:
+            None. Populates `self.Q_gammas` with `Qs_annotated` and infers `self.T_gammas`
+            via `impute_smoothed_transitions`.
+        """
+        
         # Fix Qs from annotations
         self.Q_gammas = Qs_annotated
 
