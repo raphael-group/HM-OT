@@ -254,13 +254,29 @@ class HM_OT:
         C_factors, A_factors, B_factors = C_factors_sequence[self.N-1], A_factors_sequence[self.N-1], A_factors_sequence[self.N]
         r1, r2 = self.rank_list[self.N-1]
         
-        Q,R,T, errs = FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
-                                                  r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
-                                                 returnFull=self.returnFull, alpha=self.alpha, \
-                                                min_iter=self.min_iter, initialization=self.initialization, \
-                                                  tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                dtype=self.dtype, updateR = True, updateQ = True, updateT = True, \
-                                              init_args=(None,None,None), printCost=self.printCost)
+        Q,R,T, errs = FRLC_LR_opt(C_factors,
+                                  A_factors, 
+                                  B_factors, 
+                                  a=self.a, 
+                                  b=self.b,
+                                  r=r1,
+                                  r2=r2,
+                                  max_iter=self.max_iter,
+                                  device=self.device,
+                                  returnFull=self.returnFull,
+                                  alpha=self.alpha,
+                                  min_iter=self.min_iter,
+                                  initialization=self.initialization,
+                                  tau_out=self.tau_out,
+                                  tau_in=self.tau_in,
+                                  gamma=self.gamma,
+                                  dtype=self.dtype,
+                                  updateR = True,
+                                  updateQ = True,
+                                  updateT = True,
+                                  init_args=(None,None,None),
+                                  printCost=self.printCost)
+        
         self.Q_betas.append(R)
         self.Q_betas.append(Q)
         self.T_betas.append(T)
@@ -274,13 +290,28 @@ class HM_OT:
             
             init_args = (None, R0, None)
             
-            Q,R,T, errs = FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
-                                                      r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
-                                                     returnFull=self.returnFull, alpha=self.alpha, \
-                                                    min_iter=self.min_iter, initialization=self.initialization, \
-                                                      tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                    dtype=self.dtype, updateR = False, updateQ = True, updateT = True, \
-                                                  init_args=init_args, printCost=self.printCost)
+            Q,R,T, errs = FRLC_LR_opt(C_factors,
+                                      A_factors,
+                                      B_factors,
+                                      a=self.a,
+                                      b=self.b,
+                                      r=r1,
+                                      r2=r2,
+                                      max_iter=self.max_iter,
+                                      device=self.device,
+                                      returnFull=self.returnFull,
+                                      alpha=self.alpha,
+                                      min_iter=self.min_iter,
+                                      initialization=self.initialization,
+                                      tau_out=self.tau_out,
+                                      tau_in=self.tau_in,
+                                      gamma=self.gamma,
+                                      dtype=self.dtype,
+                                      updateR = False,
+                                      updateQ = True,
+                                      updateT = True,
+                                      init_args=init_args,
+                                      printCost=self.printCost)
             
             self.Q_betas.append(Q)
             self.T_betas.append(T)
@@ -316,13 +347,28 @@ class HM_OT:
             R0 = self.Q_gammas[i+1]
             init_args = (Q0, R0, None)
             
-            Q,R,T, _errs = FRLC_LR_opt(C_factors, A_factors, B_factors, a=self.a, b=self.b, \
-                                                      r=r1, r2=r2, max_iter=self.max_iter, device=self.device, \
-                                                     returnFull=self.returnFull, alpha=self.alpha, \
-                                                    min_iter=self.min_iter, initialization=self.initialization, \
-                                                      tau_out=self.tau_out, tau_in=self.tau_in, gamma=self.gamma, \
-                                                    dtype=self.dtype, updateR = False, updateQ = False, updateT = True, \
-                                                   init_args=init_args, printCost = self.printCost)
+            Q,R,T, _errs = FRLC_LR_opt(C_factors, 
+                                       A_factors, 
+                                       B_factors, 
+                                       a=self.a, 
+                                       b=self.b, 
+                                       r=r1, 
+                                       r2=r2, 
+                                       max_iter=self.max_iter, 
+                                       device=self.device, 
+                                       returnFull=self.returnFull, 
+                                       alpha=self.alpha, 
+                                       min_iter=self.min_iter, 
+                                       initialization=self.initialization, 
+                                       tau_out=self.tau_out, 
+                                       tau_in=self.tau_in, 
+                                       gamma=self.gamma,
+                                       dtype=self.dtype, 
+                                       updateR = False, 
+                                       updateQ = False, 
+                                       updateT = True, 
+                                       init_args=init_args, 
+                                       printCost = self.printCost)
             
             self.T_gammas.append(T)
             

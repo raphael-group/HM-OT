@@ -11,10 +11,37 @@ import pandas as pd
 import scanpy as sc
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 
+
 def norm_factors(tup, c):
+    """
+    Scales a pair of low-rank factor tensors by a constant.
+
+    Args:
+        tup (tuple[torch.Tensor, torch.Tensor]): A tuple containing two tensors 
+            (e.g., factors A1 and A2).
+        c (float): A scaling constant.
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]: A tuple containing the scaled factors.
+    """
     return (tup[0] / c, tup[1] / c)
 
+
 def _compute_Q(_adata, cell_type_key):
+    """
+    Creates a one-hot encoded matrix Q representing cell-type annotations and 
+    extracts the list of unique cell-type labels.
+
+    Args:
+        _adata (AnnData): An AnnData object containing single-cell data 
+            (e.g., gene expression).
+        cell_type_key (str): The key in _adata.obs that stores cell-type annotations.
+
+    Returns:
+        tuple[np.ndarray, list]:
+            - _Q (np.ndarray): A 2D one-hot encoded array of shape (n_cells, n_labels).
+            - label (list): List of unique cell types corresponding to the columns of _Q.
+    """
     
     encoder = OneHotEncoder(sparse_output=False)
     ys_onehot = encoder.fit_transform(_adata.obs[cell_type_key].values.reshape(-1, 1))
@@ -23,12 +50,107 @@ def _compute_Q(_adata, cell_type_key):
     
     return _Q, label
 
-def convert_adata(adata, replicates, timepoints, \
-                  cell_type_key = 'cellstate', timepoint_key = 'timepoint', \
-                  replicate_key = 'orig.ident', spatial_key = ['x_loc', 'y_loc'], \
-                  feature_key = 'X_pca', dtype=torch.float32, compute_Q = True,
-                  spatial = True, dist_rank=100, dist_eps=0.02
+
+def get_replicates_from_AnnData(adata, \
+                                replicates, timepoints, \
+                                replicate_key, timepoint_key):
+    """
+    Splits an AnnData object into a list of sub-AnnData objects based on replicate 
+    and timepoint metadata.
+
+    This function iterates over pairs of (replicate, timepoint) and extracts the 
+    corresponding subset of cells from `adata`.
+
+    Args:
+        adata (AnnData): The AnnData object containing single-cell data with 
+            multiple replicates and timepoints.
+        replicates (list[str]): A list of replicate IDs to filter on.
+        timepoints (list[str]): A list of timepoints (or conditions) to filter on.
+        replicate_key (str): Key in `adata.obs` specifying which replicate 
+            each cell belongs to.
+        timepoint_key (str): Key in `adata.obs` specifying which timepoint 
+            each cell belongs to.
+
+    Returns:
+        list[AnnData]: A list of AnnData objects, each corresponding to the specified 
+        replicate-timepoint pairs in `replicates` and `timepoints`.
+    """
+    adata_replicates = []
+    
+    for idx, (rep, time) in enumerate(zip(replicates, timepoints)):
+        
+        adata_t = adata[adata.obs[timepoint_key] == time]
+        adata_rep = adata_t[adata_t.obs[replicate_key] == rep]
+        adata_replicates.append(adata_rep)
+    
+    return adata_replicates
+
+    
+def convert_adata(adata, 
+                  replicates, 
+                  timepoints, 
+                  cell_type_key = 'cellstate', 
+                  timepoint_key = 'timepoint', 
+                  replicate_key = 'orig.ident', 
+                  spatial_key = ['x_loc', 'y_loc'], 
+                  feature_key = 'X_pca', 
+                  dtype=torch.float32, 
+                  compute_Q = True,
+                  spatial = True, 
+                  dist_rank=100, 
+                  dist_eps=0.02
                  ):
+    
+    """
+    
+    Converts an AnnData object and lists of replicates/timepoints into 
+    inputs suitable for Hidden Markov Optimal Transport (HM-OT).
+
+    This function:
+      1. Splits the original AnnData into sub-AnnData objects for each 
+         replicate-timepoint pair.
+      2. Optionally computes a low-rank distance factorization for spatial data.
+      3. Collects feature embeddings for each replicate-timepoint slice.
+      4. Optionally computes a one-hot encoded cluster assignment matrix Q.
+
+    Args:
+        adata (AnnData): The AnnData object containing all cells across replicates 
+            and timepoints.
+        replicates (list[str]): A list of replicate IDs.
+        timepoints (list[str]): A list of timepoints (or conditions).
+        cell_type_key (str, optional): Column in `adata.obs` for cell annotations. 
+            Defaults to 'cellstate'.
+        timepoint_key (str, optional): Column in `adata.obs` for timepoint labels. 
+            Defaults to 'timepoint'.
+        replicate_key (str, optional): Column in `adata.obs` for replicate IDs. 
+            Defaults to 'orig.ident'.
+        spatial_key (tuple[str, str], optional): Column(s) in `adata.obs` storing 
+            spatial coordinates. Defaults to ('x_loc','y_loc').
+        feature_key (str, optional): Key in `adata.obsm` for feature embeddings 
+            (e.g., PCA). Defaults to 'X_pca'.
+        dtype (torch.dtype, optional): The torch data type to use. Defaults to torch.float32.
+        compute_Q (bool, optional): Whether to compute a one-hot matrix Q based on 
+            cell_type_key. Defaults to True.
+        spatial (bool, optional): Whether to compute a low-rank approximation of 
+            spatial distances. Defaults to True.
+        dist_rank (int, optional): The rank used in `low_rank_distance_factorization`. 
+            Defaults to 100.
+        dist_eps (float, optional): Epsilon parameter for the low-rank factorization 
+            method. Defaults to 0.02.
+
+    Returns:
+        tuple:
+            - C_factors_sequence (list[tuple[torch.Tensor, torch.Tensor]]): A list of 
+              low-rank factors approximating pairwise distances between consecutive slices.
+            - A_factors_sequence (list[tuple[torch.Tensor, torch.Tensor]]): A list of 
+              low-rank factors for within-slice distances (spatial or otherwise).
+            - Qs (list[torch.Tensor]): List of one-hot encoded cluster matrices (if compute_Q=True). 
+            - labels (list[list]): List of lists of cell-type labels for each slice.
+            - rank_list (list[tuple[int,int]]): For each pair of slices, a tuple describing 
+              the dimensions (rank) of Q clusters from slice i to slice i+1.
+            - spatial_sequence (list[np.ndarray]): List of arrays containing 
+              spatial coordinates for each replicate-timepoint slice.
+    """
     
     N = len(replicates)
     
@@ -37,15 +159,14 @@ def convert_adata(adata, replicates, timepoints, \
     features_sequence = []
     spatial_sequence = []
     
-    adata_replicates = []
     Qs = [None]*N
     labels = [None]*N
+
+    adata_replicates = get_replicates_from_AnnData(adata, \
+                                replicates, timepoints, \
+                                replicate_key, timepoint_key)
     
-    for idx, (rep, time) in enumerate(zip(replicates, timepoints)):
-        
-        adata_t = adata[adata.obs[timepoint_key] == time]
-        adata_rep = adata_t[adata_t.obs[replicate_key] == rep]
-        adata_replicates.append(adata_rep)
+    for idx, adata_rep in enumerate(adata_replicates):
         
         if spatial:
             ### Compute low-rank approximation to the distance matrix and appropriately normalize
@@ -86,6 +207,34 @@ def convert_adata(adata, replicates, timepoints, \
 
 
 def low_rank_distance_factorization(X1, X2, r, eps, device='cpu', dtype=torch.float64):
+
+    """
+    Approximates the pairwise distance matrix between X1 and X2 with two low-rank 
+    factors using a sampling-based algorithm (inspired by Bauscke, Indyk, Woodruff).
+
+    This function randomly samples rows/columns to produce an approximate 
+    factorization of the distance matrix. The final return is (V, U.T) such that
+    distance_matrix ~ V @ U.T.
+
+    References:
+        - Indyk, et al. (2019)
+        - Frieze, et al. (2004)
+        - Chen & Price (2017)
+
+    Args:
+        X1 (torch.Tensor): Coordinates (e.g., features, spatial) of shape (n, d).
+        X2 (torch.Tensor): Coordinates of shape (m, d).
+        r (int): Target rank.
+        eps (float): Sampling parameter that influences the number of sampled rows/columns.
+        device (str, optional): Device on which to perform computations. Defaults to 'cpu'.
+        dtype (torch.dtype, optional): The tensor data type. Defaults to torch.float64.
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]:
+            - V (torch.Tensor): Approximate factor of shape (n, r).
+            - U^T (torch.Tensor): Transpose of the approximate factor of shape (r, m).
+    """
+    
     n = X1.shape[0]
     m = X2.shape[0]
     '''
@@ -144,16 +293,23 @@ def low_rank_distance_factorization(X1, X2, r, eps, device='cpu', dtype=torch.fl
     return V.double(), U_t.T.double()
 
 def hadamard_square_lr(A1, A2, device='cpu'):
-    """
-    Input
-        A1: torch.tensor, low-rank subcoupling of shape (n, r)
-        A2: torch.tensor, low-rank subcoupling of shape (n, r)
-                ( such that A \approx A1 @ A2.T )
     
-    Output
-        A1_tilde: torch.tensor, low-rank subcoupling of shape (n, r**2)
-        A2_tilde: torch.tensor, low-rank subcoupling of shape (n, r**2)
-               ( such that A * A \approx A1_tilde @ A2_tilde.T )
+    """
+    Computes a Hadamard (elementwise) square of a low-rank matrix approximation 
+    via factor expansion.
+
+    If A ~ A1 @ A2.T, then A * A ~ A1_tilde @ A2_tilde.T, where each has rank r^2.
+
+    Args:
+        A1 (torch.Tensor): Low-rank factor of shape (n, r).
+        A2 (torch.Tensor): Low-rank factor of shape (n, r).
+        device (str, optional): The device on which to perform tensor operations. 
+            Defaults to 'cpu'.
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]:
+            - A1_tilde (torch.Tensor): First factor of shape (n, r^2).
+            - A2_tilde (torch.Tensor): Second factor of shape (n, r^2).
     """
     
     A1 = A1.to(device)
@@ -166,20 +322,26 @@ def hadamard_square_lr(A1, A2, device='cpu'):
 
 
 def hadamard_lr(A1, A2, B1, B2, device='cpu'):
-    """
-    Input
-        A1: torch.tensor, low-rank subcoupling of shape (n, r)
-        A2: torch.tensor, low-rank subcoupling of shape (n, r)
-                ( such that A \approx A1 @ A2.T )
-        
-        B1: torch.tensor, low-rank subcoupling of shape (n, r)
-        B2: torch.tensor, low-rank subcoupling of shape (n, r)
-                ( such that B \approx B1 @ B2.T )
     
-    Output
-        M1_tilde: torch.tensor, low-rank subcoupling of shape (n, r**2)
-        M2_tilde: torch.tensor, low-rank subcoupling of shape (n, r**2)
-               ( such that A * B \approx M1_tilde @ M2_tilde.T given low-rank factorizations for A & B)
+    """
+    Computes a Hadamard (elementwise) product of two low-rank matrix approximations 
+    via factor expansion.
+
+    If A ~ A1 @ A2.T and B ~ B1 @ B2.T, then A * B ~ M1_tilde @ M2_tilde.T, 
+    each factor having rank r^2.
+
+    Args:
+        A1 (torch.Tensor): Low-rank factor of shape (n, r) for matrix A.
+        A2 (torch.Tensor): Low-rank factor of shape (n, r) for matrix A.
+        B1 (torch.Tensor): Low-rank factor of shape (n, r) for matrix B.
+        B2 (torch.Tensor): Low-rank factor of shape (n, r) for matrix B.
+        device (str, optional): The device on which to perform tensor operations. 
+            Defaults to 'cpu'.
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]:
+            - M1_tilde (torch.Tensor): First factor of the Hadamard product, shape (n, r^2).
+            - M2_tilde (torch.Tensor): Second factor of the Hadamard product, shape (n, r^2).
     """
     A1 = A1.to(device)
     A2 = A2.to(device)
@@ -194,6 +356,20 @@ def hadamard_lr(A1, A2, B1, B2, device='cpu'):
 
 def estimate_max_norm(A, B):
     
+    """
+    Estimates the maximum product of column/row L2 norms for the factorization A @ B.
+
+    Specifically, computes:
+      max_{k} (||A[:,k]||_2 * ||B[k,:]||_2).
+
+    Args:
+        A (torch.Tensor): A factor tensor of shape (n, r).
+        B (torch.Tensor): Another factor tensor of shape (r, n) or (r, m).
+
+    Returns:
+        torch.Tensor: The esimate, the maximum value of ||A[:,k]|| * ||B[k,:]|| across all k.
+    """
+    
     assert A.shape[1] == B.shape[0], 'Inner matrix dimensions must equal.'
     col_norms = torch.linalg.norm(A, axis=0)
     row_norms = torch.linalg.norm(B, axis=1)
@@ -203,6 +379,29 @@ def estimate_max_norm(A, B):
     return C_max
 
 def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B, device='cpu'):
+
+    """
+    Normalizes multiple sets of factor matrices to ensure consistent scaling.
+
+    Steps:
+      1. Compute norm constants for each factor pair using `estimate_max_norm`.
+      2. Scale factors to have comparable magnitudes.
+      3. Apply an extra scaling factor to (V_C, U_C) to align it with (M1_, M2_).
+
+    Args:
+        V_C (torch.Tensor): Factor for cross-slice distance (shape (n, r)).
+        U_C (torch.Tensor): Factor for cross-slice distance (shape (r, m)).
+        M1_A (torch.Tensor): Factor for slice 1 distance (shape (n, r')).
+        M1_B (torch.Tensor): Factor for slice 1 distance (shape (r', n)).
+        M2_A (torch.Tensor): Factor for slice 2 distance (shape (m, r'')).
+        M2_B (torch.Tensor): Factor for slice 2 distance (shape (r'', m)).
+        device (str, optional): The device for tensor operations. Defaults to 'cpu'.
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+            The normalized versions of (V_C, U_C, M1_A, M1_B, M2_A, M2_B).
+    """
+    
     n = V_C.shape[0]
 
     norm_constant1 = estimate_max_norm(V_C, U_C)**1/2
@@ -219,6 +418,17 @@ def normalize_mats(V_C, U_C, M1_A, M1_B, M2_A, M2_B, device='cpu'):
     return V_C, U_C, M1_A, M1_B, M2_A, M2_B
 
 def scale_matrix_rows(matrix):
+    """
+    Scales each row of a NumPy array by the maximum L2 norm found across rows 
+    to constrain row values to a common scale.
+
+    Args:
+        matrix (np.ndarray): Input array of shape (n, d).
+
+    Returns:
+        np.ndarray: Scaled array of shape (n, d) with each row scaled so that 
+        the maximum row norm is 1.
+    """
     # Calculate the L2 norm for each row
     norms = np.linalg.norm(matrix, axis=1)
     # Find the maximum norm
@@ -233,6 +443,35 @@ def scale_matrix_rows(matrix):
 def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
               feature_handle1 = 'slice1_feature.npy', feature_handle2 = 'slice2_feature.npy',
              spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True):
+
+    """
+    Loads two slices of data (features and spatial coordinates) from `.npy` files
+    and computes low-rank factorizations for use in OT-based pipelines.
+
+    Args:
+        filehandle_embryo (str): A prefix or directory path to where `.npy` files 
+            are stored.
+        r (int, optional): Rank for cross-slice distance factorization. Defaults to 100.
+        r2 (int, optional): Rank for within-slice distance factorization. Defaults to 15.
+        eps (float, optional): Sampling parameter for `low_rank_distance_factorization`. 
+            Defaults to 0.03.
+        device (str, optional): Compute device ('cpu' or 'cuda'). Defaults to 'cpu'.
+        feature_handle1 (str, optional): Filename for slice 1's feature array. 
+            Defaults to 'slice1_feature.npy'.
+        feature_handle2 (str, optional): Filename for slice 2's feature array. 
+            Defaults to 'slice2_feature.npy'.
+        spatial_handle1 (str, optional): Filename for slice 1's spatial coordinates. 
+            Defaults to 'slice1_coordinates.npy'.
+        spatial_handle2 (str, optional): Filename for slice 2's spatial coordinates. 
+            Defaults to 'slice2_coordinates.npy'.
+        hadamard (bool, optional): If True, will compute the Hadamard product of
+            expression and spatial distances. Defaults to True.
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+            (V_C, U_C, M1_A, M1_B, M2_A, M2_B), where each pair of matrices 
+            approximates a distance matrix in low-rank form.
+    """
     
     data_t1 = torch.from_numpy(np.load(filehandle_embryo + feature_handle1)).to(device)
     data_t2 = torch.from_numpy(np.load(filehandle_embryo + feature_handle2)).to(device)
