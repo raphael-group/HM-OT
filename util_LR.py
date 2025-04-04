@@ -42,9 +42,14 @@ def _compute_Q(_adata, cell_type_key):
             - _Q (np.ndarray): A 2D one-hot encoded array of shape (n_cells, n_labels).
             - label (list): List of unique cell types corresponding to the columns of _Q.
     """
-    
+
+    if cell_type_key not in _adata.obs.columns:
+        raise ValueError(f"Column '{cell_type_key}' not found in AnnData.obs.")
+
+    # One-hot encode Q
     encoder = OneHotEncoder(sparse_output=False)
     ys_onehot = encoder.fit_transform(_adata.obs[cell_type_key].values.reshape(-1, 1))
+    
     _Q = ys_onehot / np.sum(ys_onehot)
     label = list(encoder.categories_[0])
     
@@ -78,9 +83,13 @@ def get_replicates_from_AnnData(adata, \
     adata_replicates = []
     
     for idx, (rep, time) in enumerate(zip(replicates, timepoints)):
+
+        mask_time = adata.obs[timepoint_key] == time
+        adata_t = adata[mask_time]
         
-        adata_t = adata[adata.obs[timepoint_key] == time]
-        adata_rep = adata_t[adata_t.obs[replicate_key] == rep]
+        mask_rep = adata_t.obs[replicate_key] == rep
+        adata_rep = adata_t[mask_rep]
+        
         adata_replicates.append(adata_rep)
     
     return adata_replicates
@@ -95,6 +104,7 @@ def convert_adata(adata,
                   spatial_key = ['x_loc', 'y_loc'], 
                   feature_key = 'X_pca', 
                   dtype=torch.float32, 
+                  device='cpu',
                   compute_Q = True,
                   spatial = True, 
                   dist_rank=100, 
@@ -129,6 +139,7 @@ def convert_adata(adata,
         feature_key (str, optional): Key in `adata.obsm` for feature embeddings 
             (e.g., PCA). Defaults to 'X_pca'.
         dtype (torch.dtype, optional): The torch data type to use. Defaults to torch.float32.
+        device (str, optional): The device on which to place torch tensors.
         compute_Q (bool, optional): Whether to compute a one-hot matrix Q based on 
             cell_type_key. Defaults to True.
         spatial (bool, optional): Whether to compute a low-rank approximation of 
@@ -170,21 +181,21 @@ def convert_adata(adata,
         
         if spatial:
             ### Compute low-rank approximation to the distance matrix and appropriately normalize
-            spatial_coords = torch.tensor( adata_rep.obs[spatial_key].to_numpy(), dtype=dtype )
-            A_rep = low_rank_distance_factorization( spatial_coords, spatial_coords, dist_rank, dist_eps )
+            spatial_coords = torch.tensor( adata_rep.obs[spatial_key].to_numpy(), dtype=dtype ).to(device)
+            A_rep = low_rank_distance_factorization( spatial_coords, spatial_coords, dist_rank, dist_eps, device=device )
             c = estimate_max_norm( A_rep[0] , A_rep[1] )
             A_rep = norm_factors( A_rep, c**1/2 )
-            A_factors_sequence.append( (A_rep[0].to(dtype), A_rep[1].to(dtype)) )
+            A_factors_sequence.append( (A_rep[0].to(dtype).to(device), A_rep[1].to(dtype).to(device)) )
             spatial_sequence.append(spatial_coords.numpy())
         else:
-            A_factors_sequence.append( (None, None) )
+            A_factors_sequence.append( None )
         
-        feature_coords = torch.tensor(adata_rep.obsm[feature_key], dtype=dtype)
+        feature_coords = torch.tensor(adata_rep.obsm[feature_key], dtype=dtype).to(device)
         features_sequence.append(feature_coords)
         
         if compute_Q:
             _Q, label = _compute_Q(adata_rep, cell_type_key=cell_type_key)
-            Qs[idx] = torch.tensor(_Q, dtype=dtype)
+            Qs[idx] = torch.tensor(_Q, dtype=dtype, device=device)
             labels[idx] = label
     
     C_factors_sequence = []
@@ -195,11 +206,12 @@ def convert_adata(adata,
         idx1, idx2 = i, i+1
         
         features1, features2 = features_sequence[idx1], features_sequence[idx2]
-        C_rep = low_rank_distance_factorization( features1, features2, dist_rank, dist_eps )
+        print('Computing low-rank distance matrix!')
+        C_rep = low_rank_distance_factorization( features1, features2, dist_rank, dist_eps , device = device )
         c = estimate_max_norm( C_rep[0] , C_rep[1] )
         C_rep = norm_factors( C_rep, c**1/2 )
-        C_factors_sequence.append( (C_rep[0].to(dtype), C_rep[1].to(dtype)))
-
+        C_factors_sequence.append( (C_rep[0].to(dtype).to(device), C_rep[1].to(dtype).to(device)))
+        
         rank_list.append( (len(labels[idx1]), len(labels[idx2]) ) )
     
     return C_factors_sequence, A_factors_sequence, Qs, labels, rank_list, spatial_sequence
