@@ -51,6 +51,8 @@ class HM_OT:
                               E.g., 'Full' or any custom initialization.
         init_args (tuple, optional): 
             Additional arguments for initialization of (Q, R, T) variables.
+        proportions (list, torch.Tensor)
+            A list of cluster proportions for each timepoint, e.g. if one wants to specify rare cell-types.
         
         Q_alphas (list): Stores the forward pass Q/R clusterings.
         T_alphas (list): Stores the forward pass transition matrices.
@@ -77,9 +79,11 @@ class HM_OT:
     # Alpha-pass variables
     Q_alphas = []
     T_alphas = []
+    
     # Beta-pass variables
     Q_betas = []
     T_betas = []
+    
     # Gamma-smoothed variables
     Q_gammas = []
     T_gammas = []
@@ -89,7 +93,7 @@ class HM_OT:
     def __init__(self, rank_list, a=None, b=None, tau_in = 0.0001, tau_out=75, \
                   gamma=90, max_iter=200, min_iter=200, device='cpu', dtype=torch.float64, \
                  printCost=True, returnFull=True, alpha=0.2, \
-                  initialization='Full', init_args = None):
+                  initialization='Full', init_args = None, proportions = None):
 
         """
         Initializes the HM_OT class with the given parameters.
@@ -124,7 +128,7 @@ class HM_OT:
                 Mixture weight for combining W and GW costs in FRLC. Defaults to 0.2.
             initialization (str, optional): 
                 Strategy for initializing the low-rank factors. Defaults to 'Full'.
-            init_args (tuple, optional): 
+            init_args (tuple, optional):
                 Additional arguments for custom initialization of (Q, R, T). Defaults to None.
         """
         
@@ -144,6 +148,7 @@ class HM_OT:
         self.alpha = alpha
         self.initialization = initialization
         self.init_args = init_args
+        self.proportions = proportions
 
     
     def alpha_pass(self, C_factors_sequence, A_factors_sequence):
@@ -378,7 +383,7 @@ class HM_OT:
                 self.errs['GW_cost'].append(float(_errs['GW_cost'][-1]))
         
         return
-
+    
     
     def gamma_smoothing(self, C_factors_sequence, A_factors_sequence):
 
@@ -422,12 +427,25 @@ class HM_OT:
             init_args = (Q_tm1, Q_tp1)
             
             # Learn smoothed clustering Q_t
-            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t, A_factors_tm1t, B_factors_tm1t, \
-                            C_factors_ttp1, A_factors_ttp1, B_factors_ttp1, r=r, max_iter=self.max_iter, device=self.device, \
-                                                         returnFull=self.returnFull, alpha=self.alpha, \
-                                                        min_iter = self.min_iter, initialization=self.initialization, tau_out=self.tau_out, \
-                                                        tau_in=self.tau_in, gamma=self.gamma, dtype=self.dtype, init_args=init_args, \
-                                                                        printCost=self.printCost)
+            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
+                                                            A_factors_tm1t,
+                                                            B_factors_tm1t,
+                                                            C_factors_ttp1, 
+                                                            A_factors_ttp1, 
+                                                            B_factors_ttp1, 
+                                                            r=r, 
+                                                            max_iter=self.max_iter, 
+                                                            device=self.device, 
+                                                            returnFull=self.returnFull, 
+                                                            alpha=self.alpha, 
+                                                            min_iter = self.min_iter, 
+                                                            initialization=self.initialization, 
+                                                            tau_out=self.tau_out, 
+                                                            tau_in=self.tau_in, 
+                                                            gamma=self.gamma, 
+                                                            dtype=self.dtype, 
+                                                            init_args=init_args, 
+                                                            printCost=self.printCost)
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
@@ -437,7 +455,7 @@ class HM_OT:
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
         
         return
-
+    
     
     def impute_annotated_transitions(self, C_factors_sequence, A_factors_sequence, Qs_annotated):
 

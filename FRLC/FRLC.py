@@ -374,11 +374,11 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
     
     # Initialize inner marginals to uniform; 
     # generalized to be of differing dimensions to account for non-square latent-coupling.
-    
     if _gQ is None:
         gQ = (1/r)*one_r
     else:
         gQ = _gQ
+    
     if _gR is None:
         gR = (1/r2)*one_r2
     else:
@@ -450,12 +450,11 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
             Q = util.logSinkhorn(gradQ - (gamma_k**-1)*torch.log(Q), a, gQ, gamma_k, max_iter = max_inneriters_relaxed, \
                              device=device, dtype=dtype, balanced=False, unbalanced=False, tau=tau_in)
 
-        if _gQ is None and _gR is None:
-            # Compute marginals from Q, R step
-            gQ, gR = Q.T @ one_N1, R.T @ one_N2
-        else:
-            # otherwise assume that gQ and gR are fixed constraints
-            pass
+        # Compute marginals if they are not fixed as input to the algorithm.
+        if _gQ is None:
+            gQ = Q.T @ one_N1
+         if _gR is None:
+            gR = R.T @ one_N2
         
         gradT, gamma_T = gd.compute_grad_B_LR(C_factors, A_factors, B_factors, Q, R, Lambda, gQ, gR, gamma, device, \
                                        alpha=alpha, dtype=dtype)
