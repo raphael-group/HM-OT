@@ -49,9 +49,9 @@ class HM_OT:
         initialization (str): 
             Method to initialize the low-rank factors for the solver. 
                               E.g., 'Full' or any custom initialization.
-        init_args (tuple, optional): 
-            Additional arguments for initialization of (Q, R, T) variables.
-        proportions (list, torch.Tensor)
+        active_Qs (list of type torch.Tensor, optional):
+                Additional arguments for custom initialization of Q matrices. Defaults to None.
+        proportions (list of type torch.Tensor, optional)
             A list of cluster proportions for each timepoint, e.g. if one wants to specify rare cell-types.
         
         Q_alphas (list): Stores the forward pass Q/R clusterings.
@@ -90,10 +90,23 @@ class HM_OT:
     
     errs = {'total_cost':[], 'W_cost':[], 'GW_cost': []}
     
-    def __init__(self, rank_list, a=None, b=None, tau_in = 0.0001, tau_out=75, \
-                  gamma=90, max_iter=200, min_iter=200, device='cpu', dtype=torch.float64, \
-                 printCost=True, returnFull=True, alpha=0.2, \
-                  initialization='Full', init_args = None, proportions = None):
+    def __init__(self,
+                 rank_list,
+                 a=None,
+                 b=None,
+                 tau_in = 0.0001,
+                 tau_out=75,
+                 gamma=90,
+                 max_iter=200,
+                 min_iter=200,
+                 device='cpu',
+                 dtype=torch.float64,
+                 printCost=True,
+                 returnFull=True,
+                 alpha=0.2,
+                 initialization='Full',
+                 active_Qs = None,
+                 proportions = None):
 
         """
         Initializes the HM_OT class with the given parameters.
@@ -128,14 +141,16 @@ class HM_OT:
                 Mixture weight for combining W and GW costs in FRLC. Defaults to 0.2.
             initialization (str, optional): 
                 Strategy for initializing the low-rank factors. Defaults to 'Full'.
-            init_args (tuple, optional):
-                Additional arguments for custom initialization of (Q, R, T). Defaults to None.
+            active_Qs (tuple, optional):
+                Additional arguments for custom initialization of Q matrices. Defaults to None.
+            proportions (list of type torch.Tensor, optional)
+                A list of cluster proportions for each timepoint, e.g. if one wants to specify rare cell-types.
         """
         
-        self.rank_list=rank_list
+        self.rank_list = rank_list
         self.N = len(self.rank_list)
-        self.a=a
-        self.b=b
+        self.a = a
+        self.b = b
         self.tau_in = tau_in
         self.tau_out = tau_out
         self.gamma = gamma
@@ -147,9 +162,19 @@ class HM_OT:
         self.returnFull = returnFull
         self.alpha = alpha
         self.initialization = initialization
-        self.init_args = init_args
-        self.proportions = proportions
+        self.active_Qs = active_Qs
 
+        if proportions is None:
+            self.proportions = (self.N+1)*[None]
+        else:
+            self.proportions = proportions
+
+        if self.active_Qs is None:
+            # All Q-matrices learned from scratch
+            self.active_Qs = (self.N+1)*[True]
+        else:
+            self.active_Qs = active_Qs
+    
     
     def alpha_pass(self, C_factors_sequence, A_factors_sequence):
         """
@@ -171,6 +196,7 @@ class HM_OT:
         self.T_alphas = []
 
         C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
+        
         r1, r2 = self.rank_list[0]
         
         Q,R,T, errs = FRLC_LR_opt(C_factors,
@@ -194,9 +220,11 @@ class HM_OT:
                                   updateQ = True,
                                   updateT = True,
                                   init_args=(None,None,None),
-                                  printCost=self.printCost)
+                                  printCost=self.printCost,
+                                 _gQ=self.proportions[0],
+                                 _gR=self.proportions[1])
         
-
+        
         self.Q_alphas.append(Q)
         self.Q_alphas.append(R)
         self.T_alphas.append(T)
@@ -229,7 +257,9 @@ class HM_OT:
                                       updateQ = False,
                                       updateT = True,
                                       init_args=init_args,
-                                      printCost=self.printCost)
+                                      printCost=self.printCost,
+                                     _gQ=self.proportions[i],
+                                     _gR=self.proportions[i+1])
             
             self.Q_alphas.append(R)
             self.T_alphas.append(T)
@@ -280,7 +310,9 @@ class HM_OT:
                                   updateQ = True,
                                   updateT = True,
                                   init_args=(None,None,None),
-                                  printCost=self.printCost)
+                                  printCost=self.printCost,
+                                 _gQ=self.proportions[self.N-1],
+                                 _gR=self.proportions[self.N])
         
         self.Q_betas.append(R)
         self.Q_betas.append(Q)
@@ -316,7 +348,9 @@ class HM_OT:
                                       updateQ = True,
                                       updateT = True,
                                       init_args=init_args,
-                                      printCost=self.printCost)
+                                      printCost=self.printCost,
+                                     _gQ=self.proportions[i],
+                                     _gR=self.proportions[i+1])
             
             self.Q_betas.append(Q)
             self.T_betas.append(T)
@@ -423,7 +457,7 @@ class HM_OT:
             
             r = self.Q_alphas[i].shape[1]
             
-            # Initialize as arguments
+            # Initialize as arguments, fixed during the optimization to infer t-variable
             init_args = (Q_tm1, Q_tp1)
             
             # Learn smoothed clustering Q_t
@@ -444,8 +478,9 @@ class HM_OT:
                                                             tau_in=self.tau_in, 
                                                             gamma=self.gamma, 
                                                             dtype=self.dtype, 
-                                                            init_args=init_args, 
-                                                            printCost=self.printCost)
+                                                            init_args=init_args,
+                                                            printCost=self.printCost,
+                                                            _gQt=self.proportions[i])
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
@@ -455,7 +490,6 @@ class HM_OT:
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
         
         return
-    
     
     def impute_annotated_transitions(self, C_factors_sequence, A_factors_sequence, Qs_annotated):
 
@@ -481,5 +515,13 @@ class HM_OT:
         
         return
         
+
+
+
+
+
+
+
+
 
 

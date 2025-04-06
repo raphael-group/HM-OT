@@ -453,7 +453,7 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
         # Compute marginals if they are not fixed as input to the algorithm.
         if _gQ is None:
             gQ = Q.T @ one_N1
-         if _gR is None:
+        if _gR is None:
             gR = R.T @ one_N2
         
         gradT, gamma_T = gd.compute_grad_B_LR(C_factors, A_factors, B_factors, Q, R, Lambda, gQ, gR, gamma, device, \
