@@ -49,8 +49,6 @@ class HM_OT:
         initialization (str): 
             Method to initialize the low-rank factors for the solver. 
                               E.g., 'Full' or any custom initialization.
-        active_Qs (list of type torch.Tensor, optional):
-                Additional arguments for custom initialization of Q matrices. Defaults to None.
         proportions (list of type torch.Tensor, optional)
             A list of cluster proportions for each timepoint, e.g. if one wants to specify rare cell-types.
         
@@ -141,8 +139,6 @@ class HM_OT:
                 Mixture weight for combining W and GW costs in FRLC. Defaults to 0.2.
             initialization (str, optional): 
                 Strategy for initializing the low-rank factors. Defaults to 'Full'.
-            active_Qs (tuple, optional):
-                Additional arguments for custom initialization of Q matrices. Defaults to None.
             proportions (list of type torch.Tensor, optional)
                 A list of cluster proportions for each timepoint, e.g. if one wants to specify rare cell-types.
         """
@@ -162,21 +158,17 @@ class HM_OT:
         self.returnFull = returnFull
         self.alpha = alpha
         self.initialization = initialization
-        self.active_Qs = active_Qs
 
         if proportions is None:
             self.proportions = (self.N+1)*[None]
         else:
             self.proportions = proportions
-
-        if self.active_Qs is None:
-            # All Q-matrices learned from scratch
-            self.active_Qs = (self.N+1)*[True]
-        else:
-            self.active_Qs = active_Qs
+        
     
-    
-    def alpha_pass(self, C_factors_sequence, A_factors_sequence):
+    def alpha_pass(self, 
+                   C_factors_sequence, 
+                   A_factors_sequence, 
+                   Q_IC = None):
         """
         Executes the forward (alpha) pass to compute clusterings (Q) and transitions (T).
         
@@ -198,6 +190,14 @@ class HM_OT:
         C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
         
         r1, r2 = self.rank_list[0]
+
+        # Whether a boundary condition is set for time 1
+        if Q_IC is None:
+            init_args=(None,None,None)
+            updateQ = True
+        else:
+            init_args=(Q_IC,None,None)
+            updateQ = False
         
         Q,R,T, errs = FRLC_LR_opt(C_factors,
                                   A_factors,
@@ -217,9 +217,9 @@ class HM_OT:
                                   gamma=self.gamma,
                                   dtype=self.dtype,
                                   updateR = True,
-                                  updateQ = True,
+                                  updateQ = updateQ,
                                   updateT = True,
-                                  init_args=(None,None,None),
+                                  init_args=init_args,
                                   printCost=self.printCost,
                                  _gQ=self.proportions[0],
                                  _gR=self.proportions[1])
@@ -267,7 +267,10 @@ class HM_OT:
         return
 
     
-    def beta_pass(self, C_factors_sequence, A_factors_sequence):
+    def beta_pass(self, 
+                  C_factors_sequence, 
+                  A_factors_sequence,
+                  R_TC = None):
         
         """
         Executes the backward (beta) pass to compute clusterings (Q) and transitions (T).
@@ -288,31 +291,38 @@ class HM_OT:
         
         C_factors, A_factors, B_factors = C_factors_sequence[self.N-1], A_factors_sequence[self.N-1], A_factors_sequence[self.N]
         r1, r2 = self.rank_list[self.N-1]
+
+        if R_TC is None:
+            init_args = (None, None, None)
+            update_R = True
+        else:
+            init_args = (None, None, R_TC)
+            update_R = False
         
         Q,R,T, errs = FRLC_LR_opt(C_factors,
                                   A_factors, 
                                   B_factors, 
-                                  a=self.a, 
-                                  b=self.b,
-                                  r=r1,
-                                  r2=r2,
-                                  max_iter=self.max_iter,
-                                  device=self.device,
-                                  returnFull=self.returnFull,
-                                  alpha=self.alpha,
-                                  min_iter=self.min_iter,
-                                  initialization=self.initialization,
-                                  tau_out=self.tau_out,
-                                  tau_in=self.tau_in,
-                                  gamma=self.gamma,
-                                  dtype=self.dtype,
-                                  updateR = True,
+                                  a = self.a, 
+                                  b = self.b,
+                                  r = r1,
+                                  r2 = r2,
+                                  max_iter = self.max_iter,
+                                  device = self.device,
+                                  returnFull = self.returnFull,
+                                  alpha = self.alpha,
+                                  min_iter = self.min_iter,
+                                  initialization = self.initialization,
+                                  tau_out = self.tau_out,
+                                  tau_in = self.tau_in,
+                                  gamma = self.gamma,
+                                  dtype = self.dtype,
+                                  updateR = update_R,
                                   updateQ = True,
                                   updateT = True,
-                                  init_args=(None,None,None),
-                                  printCost=self.printCost,
-                                 _gQ=self.proportions[self.N-1],
-                                 _gR=self.proportions[self.N])
+                                  init_args = init_args,
+                                  printCost = self.printCost,
+                                 _gQ = self.proportions[self.N-1],
+                                 _gR = self.proportions[self.N])
         
         self.Q_betas.append(R)
         self.Q_betas.append(Q)
@@ -419,7 +429,11 @@ class HM_OT:
         return
     
     
-    def gamma_smoothing(self, C_factors_sequence, A_factors_sequence):
+    def gamma_smoothing(self,
+                        C_factors_sequence,
+                        A_factors_sequence,
+                        Q_IC = None,
+                        R_TC = None):
 
         """
         Performs the Forward-Backward smoothing procedure (alpha pass + beta pass) 
@@ -441,9 +455,14 @@ class HM_OT:
         self.Q_gammas = []
 
         # Run alpha and beta passes
-        self.alpha_pass(C_factors_sequence, A_factors_sequence)
-        self.beta_pass(C_factors_sequence, A_factors_sequence)
-
+        self.alpha_pass(C_factors_sequence,
+                        A_factors_sequence,
+                        Q_IC = Q_IC)
+        
+        self.beta_pass(C_factors_sequence,
+                       A_factors_sequence,
+                       R_TC = R_TC)
+        
         self.Q_gammas.append(self.Q_alphas[0])
         
         # Multi-marginal smoothing for each time step
@@ -480,7 +499,7 @@ class HM_OT:
                                                             dtype=self.dtype, 
                                                             init_args=init_args,
                                                             printCost=self.printCost,
-                                                            _gQt=self.proportions[i])
+                                                            _gQ_t=self.proportions[i])
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
@@ -491,7 +510,10 @@ class HM_OT:
         
         return
     
-    def impute_annotated_transitions(self, C_factors_sequence, A_factors_sequence, Qs_annotated):
+    def impute_annotated_transitions(self, 
+                                     C_factors_sequence, 
+                                     A_factors_sequence, 
+                                     Qs_annotated):
 
         """
         Given an externally specified sequence of clusterings (e.g., from annotations), 

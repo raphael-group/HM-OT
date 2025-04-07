@@ -33,7 +33,7 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
                               min_iter = 25,
                               max_inneriters_balanced= 300,
                               max_inneriters_relaxed=50,
-                              _gQt=None):
+                              _gQ_t=None):
     
    
     N1, N2, N3 = C_factors_tm1t[0].size(dim=0), C_factors_tm1t[1].size(dim=1), C_factors_ttp1[1].size(dim=1)
