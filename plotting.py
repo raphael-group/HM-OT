@@ -280,7 +280,8 @@ def plot_clustering_list(
     title: Optional[str] = None,
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
-    flip: bool = False
+    flip: bool = False,
+    subplot_labels: Optional[List[Optional[List[str]]]] = None
 ) -> None:
     """
     Plot a row of scatterplots for each slice in spatial_list, colored by cluster assignments.
@@ -316,6 +317,8 @@ def plot_clustering_list(
         flip (bool, optional):
             If True, flips the y-axis (multiplying y by -1). Helpful for coordinate systems
             with reversed orientation. Defaults to False.
+        subplot_labels ((List[str]), optional)
+            Labels for each sub-plot, if none default to numbered labeling.
 
     Returns:
         None. Displays a row of subplots, one per slice, and optionally saves them.
@@ -411,7 +414,10 @@ def plot_clustering_list(
         # Remove axis boundaries / ticks
         ax.axis("off")
         ax.set_aspect("equal", adjustable="box")
-        ax.set_title(f"Slice {i+1}", color="black")
+        if subplot_labels is not None:
+            ax.set_title(subplot_labels[i], color="black")
+        else:
+            ax.set_title(f"Slice {i+1}", color="black")
 
         # If cell_type_labels[i] is provided, override the legend labels
         if cell_type_labels[i] is not None:
@@ -444,7 +450,8 @@ def plot_labeled_differentiation(
     save_name: Optional[str] = None,
     title: Optional[str] = None,
     stretch: float = 1.0,
-    outline: float = 3.0
+    outline: float = 3.0,
+    fontsize: int = 12
 ) -> None:
     """
     Plot a 2D "differentiation map" showing transitions between clusters
@@ -594,7 +601,7 @@ def plot_labeled_differentiation(
                         x_positions[i][j],
                         y_positions[i][j],
                         label_text,
-                        fontsize=12,
+                        fontsize=fontsize,
                         ha="right",
                         va="bottom",
                     )
@@ -620,7 +627,8 @@ def plot_labeled_differentiation(
     if save_name is not None:
         plt.savefig(save_name, dpi=300, transparent=True,
                     bbox_inches="tight", facecolor="black")
-
+    
+    plt.rcParams['figure.dpi'] = 300
     plt.show()
 
 ################################################################################################
@@ -637,7 +645,9 @@ def diffmap_from_QT(
     save_name: Optional[str] = None,
     dsf: float = 1.0,
     stretch: float = 1.0,
-    outline: float = 2.0
+    outline: float = 2.0,
+    fontsize: int = 12,
+    linethick_factor: int = 10
 ) -> None:
     """
     Create and plot a diffusion map (or differentiation map) from sets of Q and T matrices,
@@ -682,6 +692,10 @@ def diffmap_from_QT(
         outline (float, optional):
             The width of the white outline around text labels in the final plot.
             Default is 2.0.
+        fontsize (int, optional):
+            Fontsize of labels.
+        linethick_factor (int, optional):
+            Thickness of lines.
 
     Returns:
         None. This function displays (and optionally saves) a plot showing
@@ -709,11 +723,12 @@ def diffmap_from_QT(
         cell_type_labels=cell_type_labels,
         clustering_type=clustering_type,
         dotsize_factor=dsf,
-        linethick_factor=10,
+        linethick_factor=linethick_factor,
         title=title,
         save_name=save_name,
         stretch=stretch,
-        outline=outline
+        outline=outline,
+        fontsize=fontsize
     )
 
 
@@ -727,7 +742,8 @@ def plot_clusters_from_QT(
     title: Optional[str] = None,
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
-    flip: bool = False
+    flip: bool = False,
+    subplot_labels: Optional[List[Optional[List[str]]]] = None
 ) -> None:
     """
     Generate a scatterplot visualization of cluster assignments for one or 
@@ -770,7 +786,8 @@ def plot_clusters_from_QT(
             Size factor for scatterplot markers. Defaults to 1.0.
         flip (bool, optional):
             If True, flips (mirrors) the coordinate system along the y-axis. Defaults to False.
-
+        subplot_labels ((List[str]), optional)
+            Labels for each sub-plot, if none default to numbered labeling.
     Returns:
         None. Displays (and optionally saves) a scatterplot of cluster assignments
         for each slice.
@@ -803,7 +820,8 @@ def plot_clusters_from_QT(
         title=title,
         save_name=save_name,
         dotsize=dotsize,
-        flip=flip
+        flip=flip,
+        subplot_labels=subplot_labels
     )
 
 
