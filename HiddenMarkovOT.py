@@ -1,13 +1,10 @@
 import sys
 import os
-
-sys.path.append(os.path.abspath("FRLC"))
-
 import torch
 import matplotlib.pyplot as plt
 import util_LR
-from FRLC import FRLC_LR_opt
-from FRLC_multimarginal import FRLC_LR_opt_multimarginal
+from FRLC.FRLC import FRLC_LR_opt
+from FRLC.FRLC_multimarginal import FRLC_LR_opt_multimarginal
 
 class HM_OT:
 
@@ -291,12 +288,12 @@ class HM_OT:
         
         C_factors, A_factors, B_factors = C_factors_sequence[self.N-1], A_factors_sequence[self.N-1], A_factors_sequence[self.N]
         r1, r2 = self.rank_list[self.N-1]
-
+        
         if R_TC is None:
             init_args = (None, None, None)
             update_R = True
         else:
-            init_args = (None, None, R_TC)
+            init_args = (None, R_TC, None)
             update_R = False
         
         Q,R,T, errs = FRLC_LR_opt(C_factors,
