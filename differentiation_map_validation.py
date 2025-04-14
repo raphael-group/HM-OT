@@ -21,9 +21,12 @@ def NPMI(Tij, gi, gj, eps=1e-12):
 
 def score_from_graph(_Qs, _Ts, _labels_Q, timepoints,
                          G, labels_G, edges_df, 
+                         diagonal_from_G = False
                         ):
     edge_scores = {}
-    
+    """
+    Exhaustively score every edge in a given "ground-truth" graph G by its NPMI through the joint law.
+    """
     for _, row in edges_df.iterrows():
         
         if row["x"] in G.nodes and row["y"] in G.nodes:
@@ -79,12 +82,53 @@ def score_from_graph(_Qs, _Ts, _labels_Q, timepoints,
 
 
     edge_scores_diagonal = {}
-    
-    for node in G.nodes:
-        
-        type = labels_G[node]
-        print(f'Mapping diagonal transition {type} to self at adjacent timepoint.')
-        
+
+    if diagonal_from_G:
+        """
+        Iterate through diagonal edges for all nodes in Graph
+        """
+        for node in G.nodes:
+            
+            type = labels_G[node]
+            print(f'Mapping diagonal transition {type} to self at adjacent timepoint.')
+            
+            for i in range(len(timepoints) - 1):
+                
+                t1 = timepoints[i]
+                t2 = timepoints[i + 1]
+                
+                if i == 0:
+                    Q1 = _Qs[0]
+                    Label1 = _labels_Q[0]
+                else:
+                    Q1 = Q2
+                    Label1 = Label2
+                
+                Q2 = _Qs[i+1]
+                Label2 = _labels_Q[i+1]
+                
+                T12 = _Ts[i]
+                
+                g1 = np.sum(Q1, axis = 0)
+                g2 = np.sum(Q2, axis = 0)
+                
+                if type in Label1 and type in Label2:
+                    
+                    print(f'Mapping {type} to self at times {t1} to {t2}')
+                    idx1, idx2 = Label1.index(type), Label2.index(type)
+                    
+                    score = NPMI(T12[idx1, idx2], \
+                                 g1[idx1], g2[idx2])
+                    
+                    # Append score for transition for each timepoint
+                    key = type
+                    if key not in edge_scores_diagonal:
+                        edge_scores_diagonal[key] = []
+                    edge_scores_diagonal[key].append(score)
+    else:
+        """
+        Iterate through all diagonal edges, whether in graph or not.
+        """
         for i in range(len(timepoints) - 1):
             
             t1 = timepoints[i]
@@ -104,20 +148,21 @@ def score_from_graph(_Qs, _Ts, _labels_Q, timepoints,
             
             g1 = np.sum(Q1, axis = 0)
             g2 = np.sum(Q2, axis = 0)
-            
-            if type in Label1 and type in Label2:
-                
-                print(f'Mapping {type} to self at times {t1} to {t2}')
-                idx1, idx2 = Label1.index(type), Label2.index(type)
-                
-                score = NPMI(T12[idx1, idx2], \
-                             g1[idx1], g2[idx2])
-                
-                # Append score for transition for each timepoint
-                key = type
-                if key not in edge_scores_diagonal:
-                    edge_scores_diagonal[key] = []
-                edge_scores_diagonal[key].append(score)
+
+            for type in Label2:
+                if type in Label1:
+                    
+                    print(f'Mapping {type} to self at times {t1} to {t2}')
+                    idx1, idx2 = Label1.index(type), Label2.index(type)
+                    
+                    score = NPMI(T12[idx1, idx2], \
+                                 g1[idx1], g2[idx2])
+                    
+                    # Append score for transition for each timepoint
+                    key = type
+                    if key not in edge_scores_diagonal:
+                        edge_scores_diagonal[key] = []
+                    edge_scores_diagonal[key].append(score)
     
     return edge_scores, edge_scores_diagonal
 
