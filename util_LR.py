@@ -81,23 +81,33 @@ def get_replicates_from_AnnData(adata, \
         replicate-timepoint pairs in `replicates` and `timepoints`.
     """
     adata_replicates = []
-    
-    for idx, (rep, time) in enumerate(zip(replicates, timepoints)):
 
-        mask_time = adata.obs[timepoint_key] == time
-        adata_t = adata[mask_time]
-        
-        mask_rep = adata_t.obs[replicate_key] == rep
-        adata_rep = adata_t[mask_rep]
-        
-        adata_replicates.append(adata_rep)
+    if replicates is not None:
+        # Subset to replicates of interest
+        for idx, (rep, time) in enumerate(zip(replicates, timepoints)):
+    
+            mask_time = adata.obs[timepoint_key] == time
+            adata_t = adata[mask_time]
+            
+            mask_rep = adata_t.obs[replicate_key] == rep
+            adata_rep = adata_t[mask_rep]
+            
+            adata_replicates.append(adata_rep)
+    else:
+        # Simply aggregate across all replicates
+        for time in timepoints:
+    
+            mask_time = adata.obs[timepoint_key] == time
+            adata_t = adata[mask_time]
+            
+            adata_replicates.append(adata_t)
     
     return adata_replicates
 
     
 def convert_adata(adata, 
-                  replicates, 
                   timepoints, 
+                  replicates = None, 
                   cell_type_key = 'cellstate', 
                   timepoint_key = 'timepoint', 
                   replicate_key = 'orig.ident', 
@@ -126,8 +136,8 @@ def convert_adata(adata,
     Args:
         adata (AnnData): The AnnData object containing all cells across replicates 
             and timepoints.
-        replicates (list[str]): A list of replicate IDs.
         timepoints (list[str]): A list of timepoints (or conditions).
+        replicates (list[str], optional): A list of replicate IDs.
         cell_type_key (str, optional): Column in `adata.obs` for cell annotations. 
             Defaults to 'cellstate'.
         timepoint_key (str, optional): Column in `adata.obs` for timepoint labels. 
@@ -163,7 +173,7 @@ def convert_adata(adata,
               spatial coordinates for each replicate-timepoint slice.
     """
     
-    N = len(replicates)
+    N = len(timepoints)
     
     A_factors_sequence = []
     
@@ -454,7 +464,8 @@ def scale_matrix_rows(matrix):
 
 def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
               feature_handle1 = 'slice1_feature.npy', feature_handle2 = 'slice2_feature.npy',
-             spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True):
+             spatial_handle1 = 'slice1_coordinates.npy', spatial_handle2 = 'slice2_coordinates.npy',  hadamard = True,
+             normalize=False):
 
     """
     Loads two slices of data (features and spatial coordinates) from `.npy` files
@@ -518,8 +529,10 @@ def load_data(filehandle_embryo, r=100, r2=15, eps=0.03, device='cpu', \
     
     del V_A, U_A, V_B, U_B
     
-    V_C, U_C, M1_A, M1_B, M2_A, M2_B = normalize_mats(V_C, U_C, M1_A, M1_B.T, M2_A, M2_B.T, device=device)
-    M1_B, M2_B = M1_B.T, M2_B.T
+    if normalize:
+        V_C, U_C, M1_A, M1_B, M2_A, M2_B = normalize_mats(V_C, U_C, M1_A, M1_B.T, M2_A, M2_B.T, device=device)
+        M1_B, M2_B = M1_B.T, M2_B.T
+    
     return V_C, U_C, M1_A, M1_B, M2_A, M2_B
 
 
