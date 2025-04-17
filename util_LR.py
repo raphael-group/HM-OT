@@ -222,8 +222,12 @@ def convert_adata(adata,
         C_rep = norm_factors( C_rep, c**1/2 )
         C_factors_sequence.append( (C_rep[0].to(dtype).to(device), C_rep[1].to(dtype).to(device)))
         
-        rank_list.append( (len(labels[idx1]), len(labels[idx2]) ) )
-    
+        if compute_Q:
+            rank_list.append( (len(labels[idx1]), len(labels[idx2]) ) )
+        else:
+            # Rank-list not defined -- can be chosen by user for unsupervised HM-OT
+            pass
+            
     return C_factors_sequence, A_factors_sequence, Qs, labels, rank_list, spatial_sequence
 
 
