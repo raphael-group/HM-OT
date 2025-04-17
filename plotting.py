@@ -547,7 +547,7 @@ def plot_labeled_differentiation(
     for i, population in enumerate(population_list):
         y_positions.append(np.arange(len(population)))
         x_positions.append(np.ones(len(population)) * i)
-
+    
     # Configure figure size
     plt.figure(figsize=(stretch * 5 * (N_slices - 1), 10))
 
@@ -575,7 +575,7 @@ def plot_labeled_differentiation(
         )
 
         r1, r2 = T.shape[0], T.shape[1]
-
+        
         # Draw lines only for 'ml' (plus T[i, j] > 0)
         if clustering_type == "ml":
             for i_row in range(r1):
@@ -712,6 +712,12 @@ def diffmap_from_QT(
         raise ValueError(f"Invalid clustering_type: '{clustering_type}'.")
 
     # 2) Get population_list, labels_list, and color_dict
+    for i in range(len(clustering_list)):
+        list_size = len(np.unique(clustering_list[i]))
+        rank = Qs[i].shape[1]
+        if list_size != rank:
+            raise ValueError(f"Degenerate clusters, rank '{rank}' not equal to number of clusters '{list_size}'.")
+    
     population_list, labels_list, color_dict = get_diffmap_inputs(clustering_list, clustering_type)
 
     # 3) Plot the differentiation map
