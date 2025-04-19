@@ -227,7 +227,7 @@ def convert_adata(adata,
         else:
             # Rank-list not defined -- can be chosen by user for unsupervised HM-OT
             pass
-            
+    
     return C_factors_sequence, A_factors_sequence, Qs, labels, rank_list, spatial_sequence
 
 

@@ -83,7 +83,9 @@ class HM_OT:
     Q_gammas = []
     T_gammas = []
     
-    errs = {'total_cost':[], 'W_cost':[], 'GW_cost': []}
+    errs = {'total_cost':[],
+            'W_cost':[],
+            'GW_cost': []}
     
     def __init__(self,
                  rank_list,
@@ -160,7 +162,186 @@ class HM_OT:
             self.proportions = (self.N+1)*[None]
         else:
             self.proportions = proportions
+
+    
+    def gamma_smoothing(self,
+                        C_factors_sequence,
+                        A_factors_sequence,
+                        Q_IC = None,
+                        R_TC = None):
+
+        """
+        Performs the Forward-Backward smoothing procedure (alpha pass + beta pass) 
+        followed by a multi-marginal solver to refine the clustering matrices (Q) 
+        at each time step.
         
+        The smoothed Qs (Q_gammas) are then used to compute the transitions (T_gammas).
+        
+        Args:
+            C_factors_sequence (list): List of cost factor tensors for each transition.
+            A_factors_sequence (list): List of distribution factor tensors for each time step.
+        
+        Returns:
+            None. Populates `self.Q_gammas` and `self.T_gammas` with smoothed clusterings
+            and transitions, respectively. Also updates `self.errs` with cost values.
+        """
+
+         # Clear Q_gammas
+        self.Q_gammas = []
+
+        # Run alpha and beta passes
+        self.alpha_pass(C_factors_sequence,
+                        A_factors_sequence,
+                        Q_IC = Q_IC)
+        
+        self.beta_pass(C_factors_sequence,
+                       A_factors_sequence,
+                       R_TC = R_TC)
+        
+        self.Q_gammas.append(self.Q_alphas[0])
+        
+        # Multi-marginal smoothing for each time step
+        for i in range(1, self.N, 1):
+            
+            C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[i-1], A_factors_sequence[i-1], A_factors_sequence[i]
+            C_factors_ttp1, A_factors_ttp1, B_factors_ttp1 = C_factors_sequence[i], A_factors_sequence[i], A_factors_sequence[i+1]
+            
+            Q_tm1 = self.Q_alphas[i - 1]
+            Q_tp1 = self.Q_betas[self.N - i - 1]
+            
+            r = self.Q_alphas[i].shape[1]
+            
+            # Initialize as arguments, fixed during the optimization to infer t-variable
+            init_args = (Q_tm1, Q_tp1)
+            
+            # Learn smoothed clustering Q_t
+            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
+                                                            A_factors_tm1t,
+                                                            B_factors_tm1t,
+                                                            C_factors_ttp1, 
+                                                            A_factors_ttp1, 
+                                                            B_factors_ttp1, 
+                                                            r=r, 
+                                                            max_iter=self.max_iter, 
+                                                            device=self.device, 
+                                                            returnFull=self.returnFull, 
+                                                            alpha=self.alpha, 
+                                                            min_iter = self.min_iter, 
+                                                            initialization=self.initialization,
+                                                            tau_in=self.tau_in, 
+                                                            gamma=self.gamma, 
+                                                            dtype=self.dtype, 
+                                                            init_args=init_args,
+                                                            printCost=self.printCost,
+                                                            _gQ_t=self.proportions[i])
+            self.Q_gammas.append(Q_t)
+        
+        self.Q_gammas.append(self.Q_betas[0])
+        
+        # Clearing alpha matrices for space 
+        self.Q_alphas = []
+        self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+        
+        return
+    
+    def gamma_smoothing_with_warmup(self, 
+                                     C_factors_sequence, 
+                                     A_factors_sequence, 
+                                     Qs_annotated):
+        
+        """
+        Given an externally specified sequence of clusterings (e.g., from annotations), 
+        compute the optimal transition matrices (T) that connect consecutive Qs, 
+        as well as clusters Q initialized from the warm-up.
+
+        Args:
+            C_factors_sequence (list): List of cost factor tensors for each transition.
+            A_factors_sequence (list): List of distribution factor tensors for each time step.
+            Qs_annotated (list): A list of externally provided cluster matrices Q at each time step.
+        
+        Returns:
+            None. Infers `self.Q_gammas` and infers `self.T_gammas` with initialization to input clustering.
+            Warmup via `impute_smoothed_transitions`.
+        """
+
+        # Fix Qs from annotations
+        self.Q_gammas = Qs_annotated
+        
+        # Impute optimal transition matrices between annotations
+        # self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+        
+        if len(Qs_annotated) == 3:
+            
+            # Initialize as arguments, fixed during the optimization to infer t-variable
+            init_args = (self.Q_gammas[0], self.Q_gammas[2])
+            _Q_t = self.Q_gammas[1]
+            
+            _T_tm1t, _T_ttp1 = self.T_gammas
+            
+            # Initialize matrices
+            C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
+            C_factors_ttp1, A_factors_ttp1, B_factors_ttp1 = C_factors_sequence[1], A_factors_sequence[1], A_factors_sequence[2]
+            
+            r = self.Q_gammas[1].shape[1]
+            
+            # Learn smoothed clustering Q_t
+            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
+                                                            A_factors_tm1t,
+                                                            B_factors_tm1t,
+                                                            C_factors_ttp1, 
+                                                            A_factors_ttp1, 
+                                                            B_factors_ttp1, 
+                                                            r=r, 
+                                                            max_iter=self.max_iter, 
+                                                            device=self.device, 
+                                                            returnFull=self.returnFull, 
+                                                            alpha=self.alpha, 
+                                                            min_iter = self.min_iter, 
+                                                            initialization=self.initialization,
+                                                            tau_in=self.tau_in, 
+                                                            gamma=self.gamma, 
+                                                            dtype=self.dtype, 
+                                                            init_args=init_args,
+                                                            printCost=self.printCost,
+                                                            _gQ_t=self.proportions[1],
+                                                            _Q_t = _Q_t,
+                                                            _T_tm1t = _T_tm1t,
+                                                            _T_ttp1 = _T_ttp1)
+            
+            self.T_gammas = [T_tm1t, T_ttp1]
+            self.Q_gammas[1] = Q_t
+        
+        else:
+            raise NotImplementedError("Smoothing _with warmup_ currently assumes 3 timepoints! " + \
+                                       "Try supervised HM-OT or fully-unsupervised without warmup instead.")
+        
+        return
+
+    def impute_annotated_transitions(self, 
+                                 C_factors_sequence, 
+                                 A_factors_sequence, 
+                                 Qs_annotated):
+
+        """
+        Given an externally specified sequence of clusterings (e.g., from annotations), 
+        compute the optimal transition matrices (T) that connect consecutive Qs.
+
+        Args:
+            C_factors_sequence (list): List of cost factor tensors for each transition.
+            A_factors_sequence (list): List of distribution factor tensors for each time step.
+            Qs_annotated (list): A list of externally provided cluster matrices Q at each time step.
+        
+        Returns:
+            None. Populates `self.Q_gammas` with `Qs_annotated` and infers `self.T_gammas`
+            via `impute_smoothed_transitions`.
+        """
+        
+        # Fix Qs from annotations
+        self.Q_gammas = Qs_annotated
+        # Impute optimal transition matrices between annotations
+        self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+        
+        return
     
     def alpha_pass(self, 
                    C_factors_sequence, 
@@ -220,7 +401,6 @@ class HM_OT:
                                   printCost=self.printCost,
                                  _gQ=self.proportions[0],
                                  _gR=self.proportions[1])
-        
         
         self.Q_alphas.append(Q)
         self.Q_alphas.append(R)
@@ -424,116 +604,6 @@ class HM_OT:
                 self.errs['GW_cost'].append(float(_errs['GW_cost'][-1]))
         
         return
-    
-    
-    def gamma_smoothing(self,
-                        C_factors_sequence,
-                        A_factors_sequence,
-                        Q_IC = None,
-                        R_TC = None):
-
-        """
-        Performs the Forward-Backward smoothing procedure (alpha pass + beta pass) 
-        followed by a multi-marginal solver to refine the clustering matrices (Q) 
-        at each time step.
-        
-        The smoothed Qs (Q_gammas) are then used to compute the transitions (T_gammas).
-        
-        Args:
-            C_factors_sequence (list): List of cost factor tensors for each transition.
-            A_factors_sequence (list): List of distribution factor tensors for each time step.
-        
-        Returns:
-            None. Populates `self.Q_gammas` and `self.T_gammas` with smoothed clusterings
-            and transitions, respectively. Also updates `self.errs` with cost values.
-        """
-
-         # Clear Q_gammas
-        self.Q_gammas = []
-
-        # Run alpha and beta passes
-        self.alpha_pass(C_factors_sequence,
-                        A_factors_sequence,
-                        Q_IC = Q_IC)
-        
-        self.beta_pass(C_factors_sequence,
-                       A_factors_sequence,
-                       R_TC = R_TC)
-        
-        self.Q_gammas.append(self.Q_alphas[0])
-        
-        # Multi-marginal smoothing for each time step
-        for i in range(1, self.N, 1):
-            
-            C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[i-1], A_factors_sequence[i-1], A_factors_sequence[i]
-            C_factors_ttp1, A_factors_ttp1, B_factors_ttp1 = C_factors_sequence[i], A_factors_sequence[i], A_factors_sequence[i+1]
-            
-            Q_tm1 = self.Q_alphas[i - 1]
-            Q_tp1 = self.Q_betas[self.N - i - 1]
-            
-            r = self.Q_alphas[i].shape[1]
-            
-            # Initialize as arguments, fixed during the optimization to infer t-variable
-            init_args = (Q_tm1, Q_tp1)
-            
-            # Learn smoothed clustering Q_t
-            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
-                                                            A_factors_tm1t,
-                                                            B_factors_tm1t,
-                                                            C_factors_ttp1, 
-                                                            A_factors_ttp1, 
-                                                            B_factors_ttp1, 
-                                                            r=r, 
-                                                            max_iter=self.max_iter, 
-                                                            device=self.device, 
-                                                            returnFull=self.returnFull, 
-                                                            alpha=self.alpha, 
-                                                            min_iter = self.min_iter, 
-                                                            initialization=self.initialization, 
-                                                            tau_out=self.tau_out, 
-                                                            tau_in=self.tau_in, 
-                                                            gamma=self.gamma, 
-                                                            dtype=self.dtype, 
-                                                            init_args=init_args,
-                                                            printCost=self.printCost,
-                                                            _gQ_t=self.proportions[i])
-            self.Q_gammas.append(Q_t)
-        
-        self.Q_gammas.append(self.Q_betas[0])
-        
-        # Clearing alpha matrices for space 
-        self.Q_alphas = []
-        self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
-        
-        return
-    
-    def impute_annotated_transitions(self, 
-                                     C_factors_sequence, 
-                                     A_factors_sequence, 
-                                     Qs_annotated):
-
-        """
-        Given an externally specified sequence of clusterings (e.g., from annotations), 
-        compute the optimal transition matrices (T) that connect consecutive Qs.
-
-        Args:
-            C_factors_sequence (list): List of cost factor tensors for each transition.
-            A_factors_sequence (list): List of distribution factor tensors for each time step.
-            Qs_annotated (list): A list of externally provided cluster matrices Q at each time step.
-        
-        Returns:
-            None. Populates `self.Q_gammas` with `Qs_annotated` and infers `self.T_gammas`
-            via `impute_smoothed_transitions`.
-        """
-        
-        # Fix Qs from annotations
-        self.Q_gammas = Qs_annotated
-
-        # Impute optimal transition matrices between annotations
-        self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
-        
-        return
-        
 
 
 

@@ -15,8 +15,7 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
                               C_factors_ttp1, 
                               A_factors_ttp1, 
                               B_factors_ttp1, 
-                              tau_in = 0.0001, 
-                              tau_out=75, 
+                              tau_in = 0.0001,
                               gamma=90, 
                               r = 10, 
                               max_iter=200, 
@@ -26,14 +25,17 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
                               returnFull=True,
                               alpha=0.2,
                               initialization='Full',
-                              init_args = None,
+                              init_args = (None, None),
                               full_grad=True,
                               convergence_criterion=True,
                               tol=5e-6,
                               min_iter = 25,
                               max_inneriters_balanced= 300,
                               max_inneriters_relaxed=50,
-                              _gQ_t=None):
+                              _gQ_t=None,
+                              _Q_t=None,
+                              _T_tm1t=None,
+                              _T_ttp1=None):
     
    
     N1, N2, N3 = C_factors_tm1t[0].size(dim=0), C_factors_tm1t[1].size(dim=1), C_factors_ttp1[1].size(dim=1)
@@ -44,6 +46,7 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
     
     # Initialize tm1, tp1 couplings to input factors and yield associated inner marginals
     Q_tm1, Q_tp1 = init_args
+    
     gQ_tm1 = Q_tm1.T @ one_N1
     gQ_tp1 =  Q_tp1.T @ one_N3
     
@@ -69,21 +72,37 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
     gQ_tm1 = Q_tm1.T @ one_N1
     gQ_tp1 = Q_tp1.T @ one_N3
     
-    if _gQ_t == None:
-        # Middle inner marginal initialized to uniform for simplicity
-        gQ_t = (1/r2)*one_r2
-    else:
-        # Otherwise, fix cluster proportions
+    if _gQ_t is not None:
+        # Otherwise, fix final/desired cluster proportions
         gQ_t = _gQ_t
     
     # Variables to optimize: Q_t, T_tm1t, T_ttp1; take random matrix sample and project onto coupling space for each
-    Q_t = util.logSinkhorn(torch.rand((N2,r2), device=device, dtype=dtype), b, gQ_t, gamma, \
-                    max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
+    if _Q_t is None:
+        if _gQ_t is None:
+            # Middle inner marginal initialized to uniform for simplicity
+            gQ_t = (1/r2)*one_r2
+        Q_t = util.logSinkhorn(torch.rand((N2,r2), device=device, dtype=dtype), b, gQ_t, gamma, \
+                        max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
+    else:
+        Q_t = _Q_t
+        if _gQ_t is None:
+            gQ_t = Q_t.T @ one_N2
+        eps_Q_t = util.logSinkhorn(torch.rand((N2,r2), device=device, dtype=dtype), b, gQ_t, gamma, \
+                        max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
+        lambda_factor = 0.5
+        # Add a little noise, e.g. if most of Q_t is sparse/a clustering, logQ_t = - inf which is unstable!
+        Q_t = ( 1 - lambda_factor ) * Q_t + lambda_factor * eps_Q_t
     
-    T_tm1t = util.logSinkhorn(torch.rand((r1,r2), device=device, dtype=dtype), gQ_tm1, gQ_t, gamma, \
-                    max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
-    T_ttp1 = util.logSinkhorn(torch.rand((r2,r3), device=device, dtype=dtype), gQ_t, gQ_tp1, gamma, \
-                    max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
+    if _T_tm1t is None:
+        T_tm1t = util.logSinkhorn(torch.rand((r1,r2), device=device, dtype=dtype), gQ_tm1, gQ_t, gamma, \
+                        max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
+    else:
+        T_tm1t = _T_tm1t
+    if _T_ttp1 is None:
+        T_ttp1 = util.logSinkhorn(torch.rand((r2,r3), device=device, dtype=dtype), gQ_t, gQ_tp1, gamma, \
+                        max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
+    else:
+        T_ttp1 = _T_ttp1
     
     Lambda_tm1t = torch.diag(1/ (Q_tm1.T @ one_N1)) @ T_tm1t @ torch.diag(1/ (Q_t.T @ one_N2))
     Lambda_ttp1 = torch.diag(1/ (Q_t.T @ one_N2)) @ T_ttp1 @ torch.diag(1/ (Q_tp1.T @ one_N3))
@@ -122,10 +141,11 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
                                                         alpha=alpha,
                                                         dtype=dtype,
                                                         full_grad=full_grad)
-        
-        Q_t = util.logSinkhorn(gradQ_t - (gamma_k**-1)*torch.log(Q_t), b, gQ_t, gamma_k, max_iter = max_inneriters_relaxed, \
-                             device=device, dtype=dtype, balanced=False, unbalanced=True, tau=tau_out, tau2=tau_in)
 
+        # Assumes strict satisfaction of a_t, relaxation onto gQ_t
+        Q_t = util.logSinkhorn(gradQ_t - (gamma_k**-1)*torch.log(Q_t), b, gQ_t, gamma_k, max_iter = max_inneriters_relaxed, \
+                             device=device, dtype=dtype, balanced=False, unbalanced=False, tau=tau_in)
+        
         """
         Update gQ_t cluster proportions, unless gQ_t fixed as a model parameter.
         """
@@ -150,11 +170,11 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
         
         T_tm1t = util.logSinkhorn(gradT_tm1t - (gamma_T**-1)*torch.log(T_tm1t), gQ_tm1, gQ_t, gamma_T, max_iter = max_inneriters_balanced, \
                              device=device, dtype=dtype, balanced=True, unbalanced=False)
-
         
         """
         T_ttp1 second transition matrix
         """
+        
         gradT_ttp1, gamma_T = gd.compute_grad_B_LR(C_factors_ttp1,
                                                    A_factors_ttp1,
                                                    B_factors_ttp1,
