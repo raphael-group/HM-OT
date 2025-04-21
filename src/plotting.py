@@ -10,7 +10,7 @@ from typing import List, Union, Dict, Tuple, Optional
 
 import scanpy as sc
 
-from clustering import max_likelihood_clustering, reference_clustering
+from .utils.clustering import max_likelihood_clustering, reference_clustering
 
 ################################################################################################
 #   plotting helper functions

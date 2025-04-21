@@ -1,5 +1,5 @@
 import torch
-import util
+from . import util
 
 def compute_grad_A(C, Q, R, Lambda, gamma, \
                    semiRelaxedLeft, semiRelaxedRight, device, \

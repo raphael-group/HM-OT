@@ -2,9 +2,9 @@ import sys
 import os
 import torch
 import matplotlib.pyplot as plt
-import util_LR
-from FRLC.FRLC import FRLC_LR_opt
-from FRLC.FRLC_multimarginal import FRLC_LR_opt_multimarginal
+from .utils import util_LR
+from .FRLC.FRLC import FRLC_LR_opt
+from .FRLC.FRLC_multimarginal import FRLC_LR_opt_multimarginal
 
 class HM_OT:
 

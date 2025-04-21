@@ -1,5 +1,4 @@
 import torch
-import util
 from sklearn.cluster import KMeans
 import random
 from torch.distributions.multivariate_normal import MultivariateNormal
@@ -129,78 +128,6 @@ def initialize_couplings(a, b, gQ, gR, gamma, \
         Lambda = torch.linalg.inv(T)
     
     return Q, R, T, Lambda
-
-
-def k_means_initialization(x0, x1, r1, r2=None, \
-                           a=None, b=None, gQ=None, gR=None, \
-                           eps = 1e-3, device = 'cpu', \
-                           dtype=torch.float64):
-    '''
-    An initialization relying on a pair of k-means clusterings on the first and second dataset.
-    ------Parameters------
-    x0: torch.tensor
-        First N1 x d dataset for d the data-dimension
-    x1: torch.tensor
-        Second N2 x d dataset for d the data-dimension
-    r1: int
-        Latent source rank
-    r2: int
-        Latent target rank
-    a: torch tensor
-        Left outer marginal, should be positive and sum to 1.0
-    b: torch tensor
-        Right outer marginal, should be positive and sum to 1.0
-    gQ: torch tensor
-        Left inner marginal, should be positive and sum to 1.0
-    gR: torch tensor
-        Right inner marginal, should be positive and sum to 1.0
-    eps: float
-        Epsilon used for Sinkhorn to generate the sub-couplings.
-    device: str
-        'cpu' if running on CPU, else 'cuda' for GPU
-    dtype: torch dtype
-        Defaults to float64
-    '''
-    n, m =  x0.size(dim=0), x1.size(dim=0)
-    # Initialize outer marginals
-    if a is None:
-        one_n = torch.ones((n), device=device, dtype=dtype)
-        a = one_n / n
-    if b is None:
-        one_m = torch.ones((m), device=device, dtype=dtype)
-        b = one_m / m
-    # Set ranks equal if second rank not given  
-    if r2 is None:
-        r2 = r1
-    
-    if gQ is None:
-        one_r1 = torch.ones((r1), device=device, dtype=dtype)
-        gQ = one_r1 / r1
-    if gR is None:
-        one_r2 = torch.ones((r2), device=device, dtype=dtype)
-        gR = one_r2 / r2
-    _x0, _x1 = x0.cpu().numpy(), x1.cpu().numpy()
-    # Compute optimal clustering to initialize OT alignment
-    y0 = KMeans(n_clusters=r1, n_init="auto").fit(_x0).cluster_centers_
-    y1 = KMeans(n_clusters=r2, n_init="auto").fit(_x1).cluster_centers_
-    # Move back to tensor
-    x0,x1=x0.double(),x1.double()
-    y0,y1 = torch.from_numpy(y0).to(device).double(),torch.from_numpy(y1).to(device).double()
-    # Compute distance matrices
-    CQ,CT,CR = torch.cdist(x0, y0), torch.cdist(y0, y1), torch.cdist(x1,y1)
-    # Generate Kernel
-    xiQ, xiR, xiT = torch.exp( -CQ / eps ), torch.exp( -CR / eps ), torch.exp( -CT / eps )
-    
-    # Generate couplings
-    u, v = util.Sinkhorn(xiQ, a, gQ, n, r1, eps, device=device)
-    Q = torch.diag(u) @ xiQ @ torch.diag(v)
-    u, v = util.Sinkhorn(xiR, b, gR, m, r2, eps, device=device)
-    R = torch.diag(u) @ xiR @ torch.diag(v)
-    u, v = util.Sinkhorn(xiT, gQ, gR, r1, r2, eps, device=device)
-    T = torch.diag(u) @ xiT @ torch.diag(v)
-    
-    return (Q,R,T)
-
 
 
 
@@ -528,3 +455,73 @@ def LC_proj(X0, X1, Q, R):
     R_barycenters = torch.diag(1/gR) @ R.T @ X1
 
     return Q_barycenters, R_barycenters
+
+def k_means_initialization(x0, x1, r1, r2=None, \
+                           a=None, b=None, gQ=None, gR=None, \
+                           eps = 1e-3, device = 'cpu', \
+                           dtype=torch.float64):
+    '''
+    An initialization relying on a pair of k-means clusterings on the first and second dataset.
+    ------Parameters------
+    x0: torch.tensor
+        First N1 x d dataset for d the data-dimension
+    x1: torch.tensor
+        Second N2 x d dataset for d the data-dimension
+    r1: int
+        Latent source rank
+    r2: int
+        Latent target rank
+    a: torch tensor
+        Left outer marginal, should be positive and sum to 1.0
+    b: torch tensor
+        Right outer marginal, should be positive and sum to 1.0
+    gQ: torch tensor
+        Left inner marginal, should be positive and sum to 1.0
+    gR: torch tensor
+        Right inner marginal, should be positive and sum to 1.0
+    eps: float
+        Epsilon used for Sinkhorn to generate the sub-couplings.
+    device: str
+        'cpu' if running on CPU, else 'cuda' for GPU
+    dtype: torch dtype
+        Defaults to float64
+    '''
+    n, m =  x0.size(dim=0), x1.size(dim=0)
+    # Initialize outer marginals
+    if a is None:
+        one_n = torch.ones((n), device=device, dtype=dtype)
+        a = one_n / n
+    if b is None:
+        one_m = torch.ones((m), device=device, dtype=dtype)
+        b = one_m / m
+    # Set ranks equal if second rank not given  
+    if r2 is None:
+        r2 = r1
+    
+    if gQ is None:
+        one_r1 = torch.ones((r1), device=device, dtype=dtype)
+        gQ = one_r1 / r1
+    if gR is None:
+        one_r2 = torch.ones((r2), device=device, dtype=dtype)
+        gR = one_r2 / r2
+    _x0, _x1 = x0.cpu().numpy(), x1.cpu().numpy()
+    # Compute optimal clustering to initialize OT alignment
+    y0 = KMeans(n_clusters=r1, n_init="auto").fit(_x0).cluster_centers_
+    y1 = KMeans(n_clusters=r2, n_init="auto").fit(_x1).cluster_centers_
+    # Move back to tensor
+    x0,x1=x0.double(),x1.double()
+    y0,y1 = torch.from_numpy(y0).to(device).double(),torch.from_numpy(y1).to(device).double()
+    # Compute distance matrices
+    CQ,CT,CR = torch.cdist(x0, y0), torch.cdist(y0, y1), torch.cdist(x1,y1)
+    # Generate Kernel
+    xiQ, xiR, xiT = torch.exp( -CQ / eps ), torch.exp( -CR / eps ), torch.exp( -CT / eps )
+    
+    # Generate couplings
+    u, v = Sinkhorn(xiQ, a, gQ, n, r1, eps, device=device)
+    Q = torch.diag(u) @ xiQ @ torch.diag(v)
+    u, v = Sinkhorn(xiR, b, gR, m, r2, eps, device=device)
+    R = torch.diag(u) @ xiR @ torch.diag(v)
+    u, v = Sinkhorn(xiT, gQ, gR, r1, r2, eps, device=device)
+    T = torch.diag(u) @ xiT @ torch.diag(v)
+    
+    return (Q,R,T)

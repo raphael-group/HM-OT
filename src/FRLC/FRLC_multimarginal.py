@@ -1,8 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
-import util
-import objective_grad as gd
-
+from . import util
+from . import objective_grad as gd
 
 
 
