@@ -15,7 +15,7 @@ def FRLC_opt(C, a=None, b=None, A=None, B=None, tau_in = 50, tau_out=50, \
                    convergence_criterion=True, tol=1e-5, min_iter = 25, \
                    min_iterGW = 500, max_iterGW = 1000, \
                    max_inneriters_balanced= 300, max_inneriters_relaxed=50, \
-                  diagonalize_return=False):
+                  diagonalize_return=False, gQ=None, gR=None):
     
     '''
     FRLC: Factor Relaxation with Latent Coupling
@@ -91,6 +91,10 @@ def FRLC_opt(C, a=None, b=None, A=None, B=None, tau_in = 50, tau_out=50, \
     diagonalize_return: bool
         If True, diagonalize the LC-factorization to the form of Scetbon et al '21.
         Else if False, return the LC-factorization.
+    gQ: torch.tensor (r)
+        Inner marginal of first dataset.
+    gR: torch.tensor (r2)
+        Inner marginal of second dataset.
     '''
 
     
@@ -113,8 +117,10 @@ def FRLC_opt(C, a=None, b=None, A=None, B=None, tau_in = 50, tau_out=50, \
     
     # Initialize inner marginals to uniform; 
     # generalized to be of differing dimensions to account for non-square latent-coupling.
-    gQ = (1/r)*one_r
-    gR = (1/r2)*one_r2
+    if gQ is None:
+        gQ = (1/r)*one_r
+    if gR is None:
+        gR = (1/r2)*one_r2
     
     full_rank = True if initialization == 'Full' else False
     
@@ -274,7 +280,8 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
                   initialization='Full', init_args = None, full_grad=True, \
                    convergence_criterion=True, tol=5e-6, min_iter = 25, \
                    max_inneriters_balanced= 300, max_inneriters_relaxed=50, \
-                  diagonalize_return=False, updateR=True, updateQ=True, updateT=True):
+                  diagonalize_return=False, updateR=True, updateQ=True, updateT=True, \
+                        _gQ = None, _gR = None, balancedT = True):
     
     '''
     FRLC with a low-rank factorization of the distance matrices (C, A, B) assumed.
@@ -340,6 +347,12 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
         If true, update R matrix for all iterations.
     updateT: bool (default = True)
         If true, update T matrix for all iterations.
+    gQ: torch.tensor (r)
+        Inner marginal of first dataset.
+    gR: torch.tensor (r2)
+        Inner marginal of second dataset.
+    balancedT: bool (default = True)
+        If true, runs balanced OT on cell-types. Else, runs semi-relaxed.
     '''
     
     N1, N2 = C_factors[0].size(dim=0), C_factors[1].size(dim=1)
@@ -361,8 +374,15 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
     
     # Initialize inner marginals to uniform; 
     # generalized to be of differing dimensions to account for non-square latent-coupling.
-    gQ = (1/r)*one_r
-    gR = (1/r2)*one_r2
+    if _gQ is None:
+        gQ = (1/r)*one_r
+    else:
+        gQ = _gQ
+    
+    if _gR is None:
+        gR = (1/r2)*one_r2
+    else:
+        gR = _gR
     
     full_rank = True if initialization == 'Full' else False
     
@@ -429,14 +449,24 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
         if updateQ:
             Q = util.logSinkhorn(gradQ - (gamma_k**-1)*torch.log(Q), a, gQ, gamma_k, max_iter = max_inneriters_relaxed, \
                              device=device, dtype=dtype, balanced=False, unbalanced=False, tau=tau_in)
+
+        # Compute marginals if they are not fixed as input to the algorithm.
+        if _gQ is None:
+            gQ = Q.T @ one_N1
+        if _gR is None:
+            gR = R.T @ one_N2
         
-        gQ, gR = Q.T @ one_N1, R.T @ one_N2
         gradT, gamma_T = gd.compute_grad_B_LR(C_factors, A_factors, B_factors, Q, R, Lambda, gQ, gR, gamma, device, \
                                        alpha=alpha, dtype=dtype)
         
         if updateT:
-            T = util.logSinkhorn(gradT - (gamma_T**-1)*torch.log(T), gQ, gR, gamma_T, max_iter = max_inneriters_balanced, \
-                             device=device, dtype=dtype, balanced=True, unbalanced=False)
+            if balancedT:
+                T = util.logSinkhorn(gradT - (gamma_T**-1)*torch.log(T), gQ, gR, gamma_T, max_iter = max_inneriters_balanced, \
+                                 device=device, dtype=dtype, balanced=True, unbalanced=False)
+            else:
+                # Semi-relaxed OT for transitions T
+                T = util.logSinkhorn( (gradT - (gamma_T**-1)*torch.log(T)).T , gR, gQ, gamma_T, max_iter = max_inneriters_balanced, \
+                             device=device, dtype=dtype, balanced=False, unbalanced=False, tau=tau_out).T
         
         # Inner latent transition-inverse matrix
         Lambda = torch.diag(1/gQ) @ T @ torch.diag(1/gR)

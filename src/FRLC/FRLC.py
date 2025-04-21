@@ -465,7 +465,7 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
                                  device=device, dtype=dtype, balanced=True, unbalanced=False)
             else:
                 # Semi-relaxed OT for transitions T
-                T = util.logSinkhorn( (gradT - (gamma_k**-1)*torch.log(T)).T , gR, gQ, gamma_T, max_iter = max_inneriters_balanced, \
+                T = util.logSinkhorn( (gradT - (gamma_T**-1)*torch.log(T)).T , gR, gQ, gamma_T, max_iter = max_inneriters_balanced, \
                              device=device, dtype=dtype, balanced=False, unbalanced=False, tau=tau_out).T
         
         # Inner latent transition-inverse matrix

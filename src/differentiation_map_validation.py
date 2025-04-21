@@ -296,38 +296,38 @@ def evaluate_coclusters(Qs_ann, Qs_u, Ts_u, Ts_s, Ts_m,
     C1_pred_u = np.diag(1 / np.sum(T12_u, axis=1)) @ T12_u @ C2_U
     
     sim_pre = cosine_similarity(C1, C1_pred_moscot).diagonal()
-    print(f"Mean cosine similarity (t2 transferred to t1), moscot transitions + annotated types: {sim_pre.mean():.3f}")
+    #print(f"Mean cosine similarity (t2 transferred to t1), moscot transitions + annotated types: {sim_pre.mean():.3f}")
     weighted_score = np.sum(np.sum(Q1, axis=0) * sim_pre)
-    print(f"Weighted cosine similarity: {weighted_score:.3f}")
+    print(f"Weighted cosine similarity moscot (t2 transferred to t1): {weighted_score:.3f}")
     
     sim_pre = cosine_similarity(C1, C1_pred_s).diagonal()
-    print(f"Mean cosine similarity (t2 transferred to t1), hm-ot transitions + annotated types: {sim_pre.mean():.3f}")
+    #print(f"Mean cosine similarity (t2 transferred to t1), hm-ot transitions + annotated types: {sim_pre.mean():.3f}")
     weighted_score = np.sum(np.sum(Q1, axis=0) * sim_pre)
-    print(f"Weighted cosine similarity: {weighted_score:.3f}")
+    print(f"Weighted cosine similarity hm-ot supervised (t2 transferred to t1): {weighted_score:.3f}")
     
     sim_pre = cosine_similarity(C1, C1_pred_u).diagonal()
-    print(f"Mean cosine similarity (t2 transferred to t1), hm-ot unsupervised types+transitions: {sim_pre.mean():.3f}")
+    #print(f"Mean cosine similarity (t2 transferred to t1), hm-ot unsupervised types+transitions: {sim_pre.mean():.3f}")
     weighted_score = np.sum(np.sum(Q1, axis=0) * sim_pre)
-    print(f"Weighted cosine similarity: {weighted_score:.3f}")
+    print(f"Weighted cosine similarity hm-ot unsupervised (t2 transferred to t1): {weighted_score:.3f}")
     
     C3_pred_moscot = np.diag(1 / np.sum(T23_moscot, axis=0)) @ T23_moscot.T @ C2
     C3_pred_s = np.diag(1 / np.sum(T23_s, axis=0)) @ T23_s.T @ C2
     C3_pred_u = np.diag(1 / np.sum(T23_u, axis=0)) @ T23_u.T @ C2_U
     
     sim_pre = cosine_similarity(C3, C3_pred_moscot).diagonal()
-    print(f"Mean cosine similarity (t2 transferred to t1), moscot transitions + annotated types: {sim_pre.mean():.3f}")
+    #print(f"Mean cosine similarity (t2 transferred to t3), moscot transitions + annotated types: {sim_pre.mean():.3f}")
     weighted_score = np.sum(np.sum(Q3, axis=0) * sim_pre)
-    print(f"Weighted cosine similarity: {weighted_score:.3f}")
+    print(f"Weighted cosine similarity moscot (t2 transferred to t3): {weighted_score:.3f}")
     
     sim_pre = cosine_similarity(C3, C3_pred_s).diagonal()
-    print(f"Mean cosine similarity (t2 transferred to t1), hm-ot transitions + annotated types: {sim_pre.mean():.3f}")
+    #print(f"Mean cosine similarity (t2 transferred to t3), hm-ot transitions + annotated types: {sim_pre.mean():.3f}")
     weighted_score = np.sum(np.sum(Q3, axis=0) * sim_pre)
-    print(f"Weighted cosine similarity: {weighted_score:.3f}")
+    print(f"Weighted cosine similarity hm-ot supervised (t2 transferred to t3): {weighted_score:.3f}")
     
     sim_pre = cosine_similarity(C3, C3_pred_u).diagonal()
-    print(f"Mean cosine similarity (t2 transferred to t1), hm-ot unsupervised types+transitions: {sim_pre.mean():.3f}")
+    #print(f"Mean cosine similarity (t2 transferred to t3), hm-ot unsupervised types+transitions: {sim_pre.mean():.3f}")
     weighted_score = np.sum(np.sum(Q3, axis=0) * sim_pre)
-    print(f"Weighted cosine similarity: {weighted_score:.3f}")
+    print(f"Weighted cosine similarity hm-ot unsupervised (t2 transferred to t3): {weighted_score:.3f}")
     
     return
 

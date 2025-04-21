@@ -89,7 +89,7 @@ def FRLC_LR_opt_multimarginal(C_factors_tm1t,
             gQ_t = Q_t.T @ one_N2
         eps_Q_t = util.logSinkhorn(torch.rand((N2,r2), device=device, dtype=dtype), b, gQ_t, gamma, \
                         max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
-        lambda_factor = 0.5
+        lambda_factor = 0.05
         # Add a little noise, e.g. if most of Q_t is sparse/a clustering, logQ_t = - inf which is unstable!
         Q_t = ( 1 - lambda_factor ) * Q_t + lambda_factor * eps_Q_t
     
