@@ -20,7 +20,7 @@ For single-cell transcriptomics, this corresponds to learning:
 
 
 <p align="center">
- <img src="images/Figure1.png" alt="Figure 1: HM-OT Schematic" width="800"/>
+ <img src="images/Figure1.png" alt="Figure 1: HM-OT Schematic" width="1200"/>
 </p>
 
 
