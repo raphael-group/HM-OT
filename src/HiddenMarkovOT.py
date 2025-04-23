@@ -1,3 +1,5 @@
+
+
 import sys
 import os
 import torch
@@ -5,6 +7,10 @@ import matplotlib.pyplot as plt
 from .utils import util_LR
 from .FRLC.FRLC import FRLC_LR_opt
 from .FRLC.FRLC_multimarginal import FRLC_LR_opt_multimarginal
+from .FRLC.FRLC import util
+
+
+
 
 class HM_OT:
 
@@ -167,9 +173,10 @@ class HM_OT:
     def gamma_smoothing(self,
                         C_factors_sequence,
                         A_factors_sequence,
-                        Q_IC = None,
-                        R_TC = None):
-
+                        Qs_IC = None,
+                        Qs_freeze = None,
+                        warmup = False):
+        
         """
         Performs the Forward-Backward smoothing procedure (alpha pass + beta pass) 
         followed by a multi-marginal solver to refine the clustering matrices (Q) 
@@ -185,18 +192,33 @@ class HM_OT:
             None. Populates `self.Q_gammas` and `self.T_gammas` with smoothed clusterings
             and transitions, respectively. Also updates `self.errs` with cost values.
         """
-
+        
+        if Qs_freeze is None:
+            Qs_freeze = [False] * len(A_factors_sequence)
+        if Qs_IC is None:
+            Qs_IC = [None] * len(A_factors_sequence)
+        
          # Clear Q_gammas
         self.Q_gammas = []
-
-        # Run alpha and beta passes
+        if warmup:
+            # Fix Qs from annotations
+            self.Q_gammas = Qs_IC
+            # Impute transition matrices between annotations with a warm-up
+            self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+        else:
+            self.T_gammas = [None] * len(C_factors_sequence)
+        
+        # Run alpha pass
         self.alpha_pass(C_factors_sequence,
                         A_factors_sequence,
-                        Q_IC = Q_IC)
+                        Qs_IC = Qs_IC,
+                        Qs_freeze = Qs_freeze)
         
+        # Run beta pass
         self.beta_pass(C_factors_sequence,
                        A_factors_sequence,
-                       R_TC = R_TC)
+                       Qs_IC = Qs_IC,
+                       Qs_freeze = Qs_freeze)
         
         self.Q_gammas.append(self.Q_alphas[0])
         
@@ -214,26 +236,37 @@ class HM_OT:
             # Initialize as arguments, fixed during the optimization to infer t-variable
             init_args = (Q_tm1, Q_tp1)
             
-            # Learn smoothed clustering Q_t
-            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
-                                                            A_factors_tm1t,
-                                                            B_factors_tm1t,
-                                                            C_factors_ttp1, 
-                                                            A_factors_ttp1, 
-                                                            B_factors_ttp1, 
-                                                            r=r, 
-                                                            max_iter=self.max_iter, 
-                                                            device=self.device, 
-                                                            returnFull=self.returnFull, 
-                                                            alpha=self.alpha, 
-                                                            min_iter = self.min_iter, 
-                                                            initialization=self.initialization,
-                                                            tau_in=self.tau_in, 
-                                                            gamma=self.gamma, 
-                                                            dtype=self.dtype, 
-                                                            init_args=init_args,
-                                                            printCost=self.printCost,
-                                                            _gQ_t=self.proportions[i])
+            if Qs_freeze[i] is False:
+                # None if no warm-start, else initialized from it.
+                _T_tm1t, _T_ttp1 = self.T_gammas[i - 1], self.T_gammas[i]
+                
+                # Learn smoothed clustering Q_t
+                Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
+                                                                A_factors_tm1t,
+                                                                B_factors_tm1t,
+                                                                C_factors_ttp1, 
+                                                                A_factors_ttp1, 
+                                                                B_factors_ttp1, 
+                                                                r=r, 
+                                                                max_iter=self.max_iter, 
+                                                                device=self.device, 
+                                                                returnFull=self.returnFull, 
+                                                                alpha=self.alpha, 
+                                                                min_iter = self.min_iter, 
+                                                                initialization=self.initialization,
+                                                                tau_in=self.tau_in, 
+                                                                gamma=self.gamma, 
+                                                                dtype=self.dtype, 
+                                                                init_args=init_args,
+                                                                printCost=self.printCost,
+                                                                _gQ_t=self.proportions[i],
+                                                                _T_tm1t = _T_tm1t,
+                                                                _T_ttp1 = _T_ttp1)
+            elif Qs_IC[i] is not None:
+                Q_t = Qs_IC[i]
+            else:
+                raise ValueError("Q_t set to be fixed/frozen, but no matrix Q_t given as input!")
+            
             self.Q_gammas.append(Q_t)
         
         self.Q_gammas.append(self.Q_betas[0])
@@ -241,79 +274,6 @@ class HM_OT:
         # Clearing alpha matrices for space 
         self.Q_alphas = []
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
-        
-        return
-    
-    def gamma_smoothing_with_warmup(self, 
-                                     C_factors_sequence, 
-                                     A_factors_sequence, 
-                                     Qs_annotated):
-        
-        """
-        Given an externally specified sequence of clusterings (e.g., from annotations), 
-        compute the optimal transition matrices (T) that connect consecutive Qs, 
-        as well as clusters Q initialized from the warm-up.
-
-        Args:
-            C_factors_sequence (list): List of cost factor tensors for each transition.
-            A_factors_sequence (list): List of distribution factor tensors for each time step.
-            Qs_annotated (list): A list of externally provided cluster matrices Q at each time step.
-        
-        Returns:
-            None. Infers `self.Q_gammas` and infers `self.T_gammas` with initialization to input clustering.
-            Warmup via `impute_smoothed_transitions`.
-        """
-
-        # Fix Qs from annotations
-        self.Q_gammas = Qs_annotated
-        
-        # Impute optimal transition matrices between annotations
-        # self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
-        
-        if len(Qs_annotated) == 3:
-            
-            # Initialize as arguments, fixed during the optimization to infer t-variable
-            init_args = (self.Q_gammas[0], self.Q_gammas[2])
-            _Q_t = self.Q_gammas[1]
-            
-            _T_tm1t, _T_ttp1 = self.T_gammas
-            
-            # Initialize matrices
-            C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
-            C_factors_ttp1, A_factors_ttp1, B_factors_ttp1 = C_factors_sequence[1], A_factors_sequence[1], A_factors_sequence[2]
-            
-            r = self.Q_gammas[1].shape[1]
-            
-            # Learn smoothed clustering Q_t
-            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
-                                                            A_factors_tm1t,
-                                                            B_factors_tm1t,
-                                                            C_factors_ttp1, 
-                                                            A_factors_ttp1, 
-                                                            B_factors_ttp1, 
-                                                            r=r, 
-                                                            max_iter=self.max_iter, 
-                                                            device=self.device, 
-                                                            returnFull=self.returnFull, 
-                                                            alpha=self.alpha, 
-                                                            min_iter = self.min_iter, 
-                                                            initialization=self.initialization,
-                                                            tau_in=self.tau_in, 
-                                                            gamma=self.gamma, 
-                                                            dtype=self.dtype, 
-                                                            init_args=init_args,
-                                                            printCost=self.printCost,
-                                                            _gQ_t=self.proportions[1],
-                                                            _Q_t = _Q_t,
-                                                            _T_tm1t = _T_tm1t,
-                                                            _T_ttp1 = _T_ttp1)
-            
-            self.T_gammas = [T_tm1t, T_ttp1]
-            self.Q_gammas[1] = Q_t
-        
-        else:
-            raise NotImplementedError("Smoothing _with warmup_ currently assumes 3 timepoints! " + \
-                                       "Try supervised HM-OT or fully-unsupervised without warmup instead.")
         
         return
 
@@ -346,7 +306,8 @@ class HM_OT:
     def alpha_pass(self, 
                    C_factors_sequence, 
                    A_factors_sequence, 
-                   Q_IC = None):
+                   Qs_IC = None,
+                   Qs_freeze = None):
         """
         Executes the forward (alpha) pass to compute clusterings (Q) and transitions (T).
         
@@ -364,18 +325,19 @@ class HM_OT:
         
         self.Q_alphas = []
         self.T_alphas = []
-
+        
         C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
         
         r1, r2 = self.rank_list[0]
-
-        # Whether a boundary condition is set for time 1
-        if Q_IC is None:
-            init_args=(None,None,None)
-            updateQ = True
-        else:
-            init_args=(Q_IC,None,None)
-            updateQ = False
+        
+        # Whether initialization set to, e.g. annotation
+        init_args=(self.stabilize_Q_init(Qs_IC[0]),
+                   self.stabilize_Q_init(Qs_IC[1]),
+                   self.T_gammas[0])
+        
+        # Update if not frozen; defaults to True for both
+        updateQ = not Qs_freeze[0]
+        updateR = not Qs_freeze[1]
         
         Q,R,T, errs = FRLC_LR_opt(C_factors,
                                   A_factors,
@@ -394,7 +356,7 @@ class HM_OT:
                                   tau_in=self.tau_in,
                                   gamma=self.gamma,
                                   dtype=self.dtype,
-                                  updateR = True,
+                                  updateR = updateR,
                                   updateQ = updateQ,
                                   updateT = True,
                                   init_args=init_args,
@@ -412,7 +374,12 @@ class HM_OT:
             r1, r2 = self.rank_list[i]
             
             Q0 = self.Q_alphas[-1]
-            init_args = (Q0, None, None)
+            
+            init_args = (Q0, 
+                         self.stabilize_Q_init(Qs_IC[i+1]),
+                         self.T_gammas[i])
+            
+            updateR = not Qs_freeze[i+1]
             
             Q,R,T, errs = FRLC_LR_opt(C_factors, 
                                       A_factors,
@@ -430,7 +397,7 @@ class HM_OT:
                                       tau_in=self.tau_in,
                                       gamma=self.gamma,
                                       dtype=self.dtype,
-                                      updateR = True,
+                                      updateR = updateR,
                                       updateQ = False,
                                       updateT = True,
                                       init_args=init_args,
@@ -442,12 +409,13 @@ class HM_OT:
             self.T_alphas.append(T)
             
         return
-
+    
     
     def beta_pass(self, 
                   C_factors_sequence, 
-                  A_factors_sequence,
-                  R_TC = None):
+                  A_factors_sequence, 
+                   Qs_IC = None,
+                   Qs_freeze = None):
         
         """
         Executes the backward (beta) pass to compute clusterings (Q) and transitions (T).
@@ -469,18 +437,27 @@ class HM_OT:
         C_factors, A_factors, B_factors = C_factors_sequence[self.N-1], A_factors_sequence[self.N-1], A_factors_sequence[self.N]
         r1, r2 = self.rank_list[self.N-1]
         
+        # Whether a boundary condition is set for time 1
+        init_args=(self.stabilize_Q_init(Qs_IC[self.N-1]), 
+                   self.stabilize_Q_init(Qs_IC[self.N]), 
+                   self.T_gammas[-1])
+        
+        # Update if not frozen
+        updateQ = not Qs_freeze[-2]
+        updateR = not Qs_freeze[-1]
+        
+        '''
         if R_TC is None:
             init_args = (None, None, None)
             update_R = True
         else:
             init_args = (None, R_TC, None)
             update_R = False
+        '''
         
         Q,R,T, errs = FRLC_LR_opt(C_factors,
                                   A_factors, 
-                                  B_factors, 
-                                  a = self.a, 
-                                  b = self.b,
+                                  B_factors,
                                   r = r1,
                                   r2 = r2,
                                   max_iter = self.max_iter,
@@ -493,8 +470,8 @@ class HM_OT:
                                   tau_in = self.tau_in,
                                   gamma = self.gamma,
                                   dtype = self.dtype,
-                                  updateR = update_R,
-                                  updateQ = True,
+                                  updateR = updateR,
+                                  updateQ = updateQ,
                                   updateT = True,
                                   init_args = init_args,
                                   printCost = self.printCost,
@@ -512,7 +489,13 @@ class HM_OT:
             
             R0 = self.Q_betas[-1]
             
-            init_args = (None, R0, None)
+            #init_args = (None, R0, None)
+            init_args = (self.stabilize_Q_init(Qs_IC[i]), 
+                         R0, 
+                         self.T_gammas[i])
+            
+            # Defaults to True
+            updateQ = not Qs_freeze[i]
             
             Q,R,T, errs = FRLC_LR_opt(C_factors,
                                       A_factors,
@@ -532,7 +515,7 @@ class HM_OT:
                                       gamma=self.gamma,
                                       dtype=self.dtype,
                                       updateR = False,
-                                      updateQ = True,
+                                      updateQ = updateQ,
                                       updateT = True,
                                       init_args=init_args,
                                       printCost=self.printCost,
@@ -543,7 +526,7 @@ class HM_OT:
             self.T_betas.append(T)
             
         return
-
+    
     
     def impute_smoothed_transitions(self, C_factors_sequence, A_factors_sequence):
 
@@ -606,8 +589,106 @@ class HM_OT:
         return
 
 
+    def stabilize_Q_init(self, Q, rand_perturb = False, 
+                         lambda_factor = 0.05, max_inneriters_balanced= 300
+                        ):
+        """
+        Initial condition Q (e.g. from annotation, if doing a warm-start) will not optimize if one-hot.
+                    ---e.g. if most of Q_t is sparse/a clustering, logQ_t = - inf which is unstable!
+        
+        Perturb to ensure there is non-zero mass everywhere.
+        """
+        if Q is None:
+            # Nothing to stabilize -- will start from scratch
+            return None
+        else:
+            # Add a small random or trivial outer product perturbation to ensure stability of one-hot encoded Q
+            N2, r2 = Q.shape[0], Q.shape[1]
+            b, gQ = torch.sum(Q, axis = 1), torch.sum(Q, axis = 0)
+            
+            if rand_perturb:
+                eps_Q = util.logSinkhorn(torch.rand((N2,r2), device=self.device, dtype=self.dtype), b, gQ, gamma, \
+                max_iter = max_inneriters_balanced, device=device, dtype=dtype, balanced=True, unbalanced=False)
+            else:
+                eps_Q = torch.outer(b, gQ).to(self.device).type(self.dtype)
+        
+            # Yield perturbation, return
+            Q_init = ( 1 - lambda_factor ) * Q + lambda_factor * eps_Q
+            
+            return Q_init
 
+    def gamma_smoothing_with_warmup(self, 
+                                     C_factors_sequence, 
+                                     A_factors_sequence, 
+                                     Qs_annotated):
+        
+        """
+        Given an externally specified sequence of clusterings (e.g., from annotations), 
+        compute the optimal transition matrices (T) that connect consecutive Qs, 
+        as well as clusters Q initialized from the warm-up.
 
+        Args:
+            C_factors_sequence (list): List of cost factor tensors for each transition.
+            A_factors_sequence (list): List of distribution factor tensors for each time step.
+            Qs_annotated (list): A list of externally provided cluster matrices Q at each time step.
+        
+        Returns:
+            None. Infers `self.Q_gammas` and infers `self.T_gammas` with initialization to input clustering.
+            Warmup via `impute_smoothed_transitions`.
+        """
+        
+        # Fix Qs from annotations
+        self.Q_gammas = Qs_annotated
+        
+        # Impute transition matrices between annotations with a warm-up
+        self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+        
+        if len(Qs_annotated) == 3:
+            
+            # Initialize as arguments, fixed during the optimization to infer t-variable
+            init_args = (self.Q_gammas[0], self.Q_gammas[2])
+            _Q_t = self.Q_gammas[1]
+            
+            _T_tm1t, _T_ttp1 = self.T_gammas
+            
+            # Initialize matrices
+            C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
+            C_factors_ttp1, A_factors_ttp1, B_factors_ttp1 = C_factors_sequence[1], A_factors_sequence[1], A_factors_sequence[2]
+            
+            r = self.Q_gammas[1].shape[1]
+            
+            # Learn smoothed clustering Q_t
+            Q_t, T_tm1t, T_ttp1 = FRLC_LR_opt_multimarginal(C_factors_tm1t,
+                                                            A_factors_tm1t,
+                                                            B_factors_tm1t,
+                                                            C_factors_ttp1, 
+                                                            A_factors_ttp1, 
+                                                            B_factors_ttp1, 
+                                                            r=r, 
+                                                            max_iter=self.max_iter, 
+                                                            device=self.device, 
+                                                            returnFull=self.returnFull, 
+                                                            alpha=self.alpha, 
+                                                            min_iter = self.min_iter, 
+                                                            initialization=self.initialization,
+                                                            tau_in=self.tau_in, 
+                                                            gamma=self.gamma, 
+                                                            dtype=self.dtype, 
+                                                            init_args=init_args,
+                                                            printCost=self.printCost,
+                                                            _gQ_t=self.proportions[1],
+                                                            _Q_t = self.stabilize_Q_init(_Q_t),
+                                                            _T_tm1t = _T_tm1t,
+                                                            _T_ttp1 = _T_ttp1)
+            
+            self.T_gammas = [T_tm1t, T_ttp1]
+            self.Q_gammas[1] = Q_t
+        
+        else:
+            raise NotImplementedError("Smoothing with warmup on transitions currently assumes 3 timepoints! " + \
+                                       "Try supervised HM-OT or fully-unsupervised without warmup instead.")
+        
+        return
 
 
 

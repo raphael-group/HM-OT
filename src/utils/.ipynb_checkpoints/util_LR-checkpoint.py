@@ -111,7 +111,8 @@ def convert_adata(adata,
                   cell_type_key = 'cellstate', 
                   timepoint_key = 'timepoint', 
                   replicate_key = 'orig.ident', 
-                  spatial_key = ['x_loc', 'y_loc'], 
+                  spatial_key = ['x_loc', 'y_loc'],
+                  fallback_spatial_key = 'spatial',
                   feature_key = 'X_pca', 
                   dtype=torch.float32, 
                   device='cpu',
@@ -146,6 +147,8 @@ def convert_adata(adata,
             Defaults to 'orig.ident'.
         spatial_key (tuple[str, str], optional): Column(s) in `adata.obs` storing 
             spatial coordinates. Defaults to ('x_loc','y_loc').
+        fallback_spatial_key: (str, optional) Column in `adata.obsm` storing 
+            spatial coordinates. Defaults to 'spatial'.
         feature_key (str, optional): Key in `adata.obsm` for feature embeddings 
             (e.g., PCA). Defaults to 'X_pca'.
         dtype (torch.dtype, optional): The torch data type to use. Defaults to torch.float32.
@@ -191,12 +194,20 @@ def convert_adata(adata,
         
         if spatial:
             ### Compute low-rank approximation to the distance matrix and appropriately normalize
-            spatial_coords = torch.tensor( adata_rep.obs[spatial_key].to_numpy(), dtype=dtype ).to(device)
+            if all(key in adata.obs.columns for key in spatial_key):
+                # coords = adata.obs[spatial_key].to_numpy()
+                spatial_coords = torch.tensor( adata_rep.obs[spatial_key].to_numpy(), dtype=dtype ).to(device)
+            elif fallback_spatial_key in adata.obsm:
+                #coords = adata.obsm[fallback_spatial_key]
+                spatial_coords = torch.tensor( adata_rep.obsm[fallback_spatial_key], dtype=dtype ).to(device)
+            else:
+                raise ValueError(f"Neither spatial_key={spatial_key} in `obs` nor `{fallback_spatial_key}` in `obsm` found.")
+            
             A_rep = low_rank_distance_factorization( spatial_coords, spatial_coords, dist_rank, dist_eps, device=device )
             c = estimate_max_norm( A_rep[0] , A_rep[1] )
             A_rep = norm_factors( A_rep, c**1/2 )
             A_factors_sequence.append( (A_rep[0].to(dtype).to(device), A_rep[1].to(dtype).to(device)) )
-            spatial_sequence.append(spatial_coords.numpy())
+            spatial_sequence.append(spatial_coords.cpu().numpy())
         else:
             A_factors_sequence.append( None )
         
