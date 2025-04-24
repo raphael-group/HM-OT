@@ -18,63 +18,28 @@ from .utils.clustering import max_likelihood_clustering, reference_clustering
 
 
 
-def hex_to_rgba(hex_color: str, alpha: float = 1.0) -> Tuple[float, float, float, float]:
+def hex_to_rgba(hex_color: str, alpha: float = 1.0) -> tuple[float, float, float, float]:
     """
-    Convert a hex color code (e.g., '#1f77b4') to an RGBA tuple.
-
+    Convert a hexadecimal color string to an RGBA tuple.
+    
     Args:
-        hex_color (str):
-            A string representing a color in hex format, starting with '#'.
-        alpha (float, optional):
-            The alpha (opacity) channel value in the range [0, 1].
-            Defaults to 1.0 (fully opaque).
-
+        hex_color: A string representing a hex color code (e.g., '#ff0000')
+        alpha: Alpha/opacity value between 0.0 and 1.0
+    
     Returns:
-        Tuple[float, float, float, float]:
-            RGBA color components, each in the range [0, 1].
-
-    Example:
-        >>> rgba = hex_to_rgba("#1f77b4", alpha=0.8)
-        >>> print(rgba)
-        (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 0.8)
+        A tuple of (red, green, blue, alpha) values, each between 0.0 and 1.0
     """
     # Convert hex to an (R, G, B) tuple in [0,1]
     rgb = mcolors.hex2color(hex_color)
-    return (*rgb, alpha)  # Append alpha and return
+    
+    # Return as RGBA tuple
+    return (*rgb, alpha)
 
 
 def get_scanpy_color_dict(
     labels_list: List[Union[np.ndarray, List[int]]],
     alpha: float = 1.0
 ) -> Dict[int, Tuple[float, float, float, float]]:
-    """
-    Create a color dictionary for cluster labels using Scanpy's predefined palette.
-
-    Args:
-        labels_list (List[Union[np.ndarray, List[int]]]):
-            A list of arrays or lists of integers, where each sub-array/list contains
-            label assignments (e.g., cluster IDs). The function will gather all unique
-            labels across these inputs.
-        alpha (float, optional):
-            Alpha (transparency) value in the range [0, 1] for the RGBA colors.
-            Defaults to 1.0.
-
-    Returns:
-        Dict[int, Tuple[float, float, float, float]]:
-            A dictionary where each key is a unique cluster label (int) and each
-            value is an RGBA color tuple. Colors are drawn from Scanpy’s
-            `default_102` palette; if there are more labels than 102, the palette
-            is cycled through again.
-
-    Example:
-        >>> labels_list = [
-        ...     [0, 1, 2, 2],
-        ...     [1, 2, 3],
-        ... ]
-        >>> color_map = get_scanpy_color_dict(labels_list, alpha=0.9)
-        >>> color_map[0]
-        (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 0.9)
-    """
     # Gather all unique labels
     unique_values = np.unique(np.concatenate(labels_list))
 
@@ -94,74 +59,12 @@ def get_scanpy_color_dict(
 
 def get_diffmap_inputs(
     clustering_list: List[np.ndarray],
-    clustering_type: str,
-    cmap: str = "tab"
+    clustering_type: str
 ) -> Tuple[
     List[List[int]],
     List[List[int]],
     Dict[int, Tuple[float, float, float, float]]
 ]:
-    """
-    Prepare population counts, label lists, and a color dictionary for 
-    diffusion map or embedding visualizations.
-
-    This function:
-      1. Computes the number of spots in each cluster per slice (population_list).
-      2. Builds a list of cluster labels for each slice (label_list). If
-         `clustering_type == 'ml'`, it shifts labels slice-by-slice so that each
-         slice has a unique label range. If `clustering_type == 'reference'`,
-         it keeps labels as-is.
-      3. Calls `get_scanpy_color_dict` to generate a color dictionary that maps
-         labels to RGBA color tuples.
-
-    Args:
-        clustering_list (List[np.ndarray]):
-            A list of 1D arrays. Each array represents cluster labels for 
-            the spots in one slice (e.g., shape (n_t,)).
-        clustering_type (str):
-            Determines label-offset handling:
-              - 'ml': merges slices by shifting each subsequent slice's labels 
-                      so they won't overlap with earlier slices.
-              - 'reference': preserves the raw labels per slice.
-        cmap (str, optional):
-            Colormap scheme passed down to color-generation logic. 
-            Defaults to "tab".
-
-    Returns:
-        Tuple[
-            List[List[int]], 
-            List[List[int]], 
-            Dict[int, Tuple[float, float, float, float]]
-        ]: 
-            A 3-item tuple consisting of:
-              1. population_list (List[List[int]]): 
-                 The counts of spots per cluster for each slice.
-              2. label_list (List[List[int]]): 
-                 A list of lists of cluster labels, possibly shifted 
-                 (depending on `clustering_type`).
-              3. color_dict (Dict[int, (float, float, float, float)]): 
-                 Maps labels to RGBA color tuples.
-
-    Example:
-        >>> import numpy as np
-        >>> clustering_list = [
-        ...     np.array([0, 0, 1]), 
-        ...     np.array([1, 2, 2, 3])
-        ... ]
-        >>> pop_list, lbl_list, color_dict = get_diffmap_inputs(
-        ...     clustering_list, 
-        ...     'ml', 
-        ...     cmap='tab'
-        ... )
-        >>> print(pop_list)
-        [[2, 1], [1, 2, 1]]
-        >>> print(lbl_list)
-        [[0, 1], [4, 5, 6, 7]] 
-        # second slice got shifted to ensure no overlap
-        >>> print(color_dict) 
-        # e.g. {0: (R, G, B, A), 1: (...), 4: (...), 5: (...), ...}
-    """
-
     # 1) population_list: spots count in each cluster per slice
     population_list: List[List[int]] = []
     for clustering in clustering_list:
@@ -209,65 +112,6 @@ def plot_clustering_list(
     flip: bool = False,
     subplot_labels: Optional[List[Optional[List[str]]]] = None
 ) -> None:
-    """
-    Plot a row of scatterplots for each slice in spatial_list, colored by cluster assignments.
-
-    This function displays each slice in a separate subplot, showing the spatial coordinates 
-    (x, y) of spots colored by their cluster labels. If 'clustering_type' is 'ml', labels in 
-    consecutive slices are shifted to ensure they do not overlap numerically. If it's 
-    'reference', labels are used as-is.
-
-    Args:
-        spatial_list (List[np.ndarray]):
-            A list of 2D arrays, each of shape (n_spots, 2). Each array contains the
-            (x, y) coordinates for spots in one slice.
-        clustering_list (List[np.ndarray]):
-            A list of 1D arrays, each of shape (n_spots,). Each array contains the 
-            cluster labels for spots in the corresponding slice.
-        clustering_type (str, optional):
-            One of:
-              - 'ml': (default) shift labels slice by slice to ensure unique label ranges.
-              - 'reference': keep labels as-is.
-        cell_type_labels (List[Optional[List[str]]] | None, optional):
-            A list of label lists or None, one per slice. If provided, each subplot's legend
-            is replaced with the corresponding cell_type_labels[i]. Defaults to None.
-        cmap (str, optional):
-            Name of the colormap passed into downstream color-dict generation. Default is 'tab'.
-        title (str, optional):
-            A global figure title. Defaults to None (no title).
-        save_name (str, optional):
-            If provided, saves the plot to the specified filename (e.g., 'figure.png') 
-            with DPI=300. Defaults to None (no file saved).
-        dotsize (float, optional):
-            Marker size for the scatterplot. Defaults to 1.0.
-        flip (bool, optional):
-            If True, flips the y-axis (multiplying y by -1). Helpful for coordinate systems
-            with reversed orientation. Defaults to False.
-        subplot_labels ((List[str]), optional)
-            Labels for each sub-plot, if none default to numbered labeling.
-
-    Returns:
-        None. Displays a row of subplots, one per slice, and optionally saves them.
-
-    Notes:
-        - It uses `get_diffmap_inputs` internally to obtain a color dictionary, 
-          so ensure that function is accessible.
-        - The background of each subplot is set to black, and the default style is 
-          `sns.set_style("white")` with `sns.set_context("notebook")`.
-
-    Example:
-        >>> import numpy as np
-        >>> spatial_0 = np.random.rand(100, 2)  # 100 spots, 2D coords
-        >>> spatial_1 = np.random.rand(120, 2)
-        >>> clust_0 = np.random.randint(0, 3, size=100)  # 3 clusters
-        >>> clust_1 = np.random.randint(0, 4, size=120)  # 4 clusters
-        >>> plot_clustering_list(
-        ...     [spatial_0, spatial_1],
-        ...     [clust_0, clust_1],
-        ...     clustering_type='ml',
-        ...     title='My Clustering Visualization'
-        ... )
-    """
     # Number of slices
     N_slices = len(spatial_list)
 
@@ -298,7 +142,7 @@ def plot_clustering_list(
     # Plot each slice in its own axis
     for i, (coords, labels) in enumerate(zip(slices, clustering_list)):
         ax = axes[i] if N_slices > 1 else axes  # If only one subplot, axes is single
-        ax.set_facecolor("black")
+        ax.set_facecolor("white")
 
         # Shift labels if 'ml' mode
         if clustering_type == "ml":
@@ -359,7 +203,7 @@ def plot_clustering_list(
     # Save figure if requested
     if save_name is not None:
         plt.savefig(save_name, dpi=300, transparent=True,
-                    bbox_inches="tight", facecolor="black")
+                    bbox_inches="tight", facecolor="white")
     plt.show()
 
 
@@ -379,86 +223,6 @@ def plot_labeled_differentiation(
     outline: float = 3.0,
     fontsize: int = 12
 ) -> None:
-    """
-    Plot a 2D "differentiation map" showing transitions between clusters
-    across multiple slices of data. Each cluster is represented by a node
-    (dot) whose size is proportional to the population count, and edges
-    (lines) represent the transition flow between clusters in consecutive slices.
-
-    Args:
-        population_list (List[List[int]]):
-            A list of length N_slices. Each element is a list of population counts
-            for that slice’s clusters.
-        transition_list (List[np.ndarray]):
-            A list of length (N_slices - 1). Each element T is a 2D array
-            (shape (r_t, r_{t+1})) representing the cell-type coupling matrix
-            between consecutive slices. T[i, j] often denotes transition mass
-            or flow from cluster i in slice t to cluster j in slice t+1.
-        label_list (List[List[int]]):
-            A list of length N_slices, where each sub-list contains the cluster
-            labels (integers) for that slice. Used to look up node colors
-            in color_dict.
-        color_dict (Dict[int, Union[str, tuple]]):
-            A dictionary mapping each cluster label (int) to a color specification
-            (e.g., an (R, G, B) tuple or a Matplotlib-recognized color string).
-        cell_type_labels (List[Optional[List[str]]] | None, optional):
-            A list of length N_slices. Each element is either None or a list of
-            strings. If provided, the text is rendered next to each node. Defaults
-            to None (no text labels).
-        clustering_type (str, optional):
-            One of:
-              - 'ml': (default) plot lines with thickness proportional to T[i, j].
-              - 'reference': logic not implemented for lines; the code
-                effectively skips the line plotting block if not 'ml'.
-        reference_index (int | None, optional):
-            Unused in this function’s logic. Provided for consistency with
-            external workflows. Defaults to None.
-        dotsize_factor (float, optional):
-            A scalar that multiplies each cluster’s population to determine
-            the scatter marker size. Defaults to 1.0.
-        linethick_factor (float, optional):
-            A scalar multiplied by T[i, j] to set the edge thickness. Defaults to 10.0.
-        save_name (str, optional):
-            If provided, saves the final figure to the given path or filename
-            (e.g., "plot.png"). Defaults to None (no saving).
-        title (str, optional):
-            A title at the top of the figure. Defaults to None.
-        stretch (float, optional):
-            Horizontal stretch factor for the figure size. Defaults to 1.0.
-        outline (float, optional):
-            Width of a white outline drawn around text labels, for clarity on 
-            dark backgrounds. Defaults to 3.0.
-
-    Returns:
-        None. Displays the figure (and optionally saves it).
-
-    Notes:
-        - The function arranges slices along the x-axis, with x-positions at
-          slice indices. The y-positions are spread vertically for each cluster
-          in that slice.
-        - Edges (lines) are only drawn if `clustering_type == 'ml'` and
-          `T[i, j] > 0`.
-        - A black background is used for better contrast, and each node has a
-          simple blue edge color for distinction.
-
-    Example:
-        >>> # Suppose we have 3 slices, each with cluster populations:
-        >>> population_list = [[100, 50], [60, 90, 10], [150, 25]]
-        >>> # Coupling between slice 0->1 and slice 1->2
-        >>> T01 = np.array([[0.1, 0.9, 0.0],
-        ...                 [0.4, 0.5, 0.1]])
-        >>> T12 = np.array([[0.3, 0.7],
-        ...                 [0.2, 0.8],
-        ...                 [0.0, 1.0]])
-        >>> transition_list = [T01, T12]
-        >>> label_list = [[0, 1], [2, 3, 4], [5, 6]]
-        >>> color_dict = {0: "red", 1: "blue", 2: "green",
-        ...               3: "orange", 4: "purple", 5: "cyan", 6: "yellow"}
-        >>> plot_labeled_differentiation(
-        ...     population_list, transition_list, label_list, color_dict,
-        ...     dotsize_factor=5, linethick_factor=10
-        ... )
-    """
     # Set seaborn style
     sns.set(style="white")
 
@@ -575,58 +339,6 @@ def diffmap_from_QT(
     fontsize: int = 12,
     linethick_factor: int = 10
 ) -> None:
-    """
-    Create and plot a diffusion map (or differentiation map) from sets of Q and T matrices,
-    optionally using either max-likelihood clustering or reference clustering.
-
-    The Q matrices specify per-slice distributions between spots and clusters, while
-    the T matrices specify transitions between consecutive slices. Based on the chosen
-    clustering type, this function:
-      1. Builds a clustering_list using either `max_likelihood_clustering` or
-         `reference_clustering`.
-      2. Derives the population list, labels list, and color dictionary from
-         `get_diffmap_inputs`.
-      3. Calls `plot_labeled_differentiation` to display a high-level flow
-         or "differentiation" diagram of how clusters evolve across slices.
-
-    Args:
-        Qs (List[np.ndarray]):
-            A list of length N, where each element Qs[t] is a 2D array (shape (n_t, r_t))
-            representing the distribution for slice t.
-        Ts (List[np.ndarray]):
-            A list of length N-1, where each element Ts[t] is a 2D array
-            (shape (r_t, r_{t+1})) specifying transitions between consecutive slices.
-        cell_type_labels (List[Optional[List[str]]] | None, optional):
-            A list of length N. Each element is either None or a list of 
-            textual labels for each cluster in the slice. If provided, these
-            labels are rendered in the final plot. Defaults to None.
-        clustering_type (str, optional):
-            One of:
-              - 'ml' (default): uses `max_likelihood_clustering`.
-              - 'reference': uses `reference_clustering`, requiring reference_index.
-        reference_index (int | None, optional):
-            Required if clustering_type == 'reference'. Specifies which slice
-            to treat as a reference. Ignored otherwise.
-        title (str, optional):
-            A title for the final figure. Defaults to None.
-        save_name (str, optional):
-            Filename (or path) to save the final figure. If None, no file is saved.
-        dsf (float, optional):
-            "Dotsize factor" for node sizes in the final plot. Default is 1.0.
-        stretch (float, optional):
-            Horizontal stretch factor of the final figure. Default is 1.0.
-        outline (float, optional):
-            The width of the white outline around text labels in the final plot.
-            Default is 2.0.
-        fontsize (int, optional):
-            Fontsize of labels.
-        linethick_factor (int, optional):
-            Thickness of lines.
-
-    Returns:
-        None. This function displays (and optionally saves) a plot showing
-        cluster transitions across slices.
-    """
     # 1) Build clustering_list using chosen approach
     if clustering_type == "ml":
         clustering_list = max_likelihood_clustering(Qs)
@@ -677,61 +389,6 @@ def plot_clusters_from_QT(
     flip: bool = False,
     subplot_labels: Optional[List[Optional[List[str]]]] = None
 ) -> None:
-    """
-    Generate a scatterplot visualization of cluster assignments for one or 
-    more slices, given spatial coordinates (Ss), per-slice probability 
-    matrices (Qs), and transitions (Ts).
-
-    Depending on clustering_type, the function either:
-      1. Uses max-likelihood clustering ('ml'), or
-      2. Uses reference clustering ('reference'), requiring reference_index.
-
-    The final plot is produced by calling `plot_clustering_list`, showing
-    each slice’s coordinates colored by cluster labels.
-
-    Args:
-        Ss (List[np.ndarray]):
-            A list of length N, where each element Ss[t] has shape (n_t, 2),
-            giving the (x, y) spatial coordinates of spots in slice t.
-        Qs (List[np.ndarray]):
-            A list of length N, where Qs[t] has shape (n_t, r_t), representing 
-            the distribution of spots vs. clusters in slice t.
-        Ts (List[np.ndarray]):
-            A list of length (N-1), where each element has shape (r_t, r_{t+1}),
-            specifying transitions between consecutive slices.
-        cell_type_labels (List[Optional[List[str]]] | None, optional):
-            A list of length N, each element is either None or a list of strings
-            labeling each cluster in the slice. Defaults to None (no text labels).
-        clustering_type (str, optional):
-            The clustering mode:
-              - 'ml': (default) use `max_likelihood_clustering(Qs)`.
-              - 'reference': use `reference_clustering(Qs, Ts, reference_index)`;
-                requires reference_index. 
-        reference_index (int | None, optional):
-            Index of the reference slice if clustering_type == 'reference'.
-            Defaults to None.
-        title (str, optional):
-            An optional title displayed above the entire figure. Defaults to None.
-        save_name (str, optional):
-            If provided, saves the resulting figure to this file path. Defaults to None.
-        dotsize (float, optional):
-            Size factor for scatterplot markers. Defaults to 1.0.
-        flip (bool, optional):
-            If True, flips (mirrors) the coordinate system along the y-axis. Defaults to False.
-        subplot_labels ((List[str]), optional)
-            Labels for each sub-plot, if none default to numbered labeling.
-    Returns:
-        None. Displays (and optionally saves) a scatterplot of cluster assignments
-        for each slice.
-
-    Example:
-        >>> # Suppose we have 2 slices of data:
-        >>> Ss = [np.random.rand(100, 2), np.random.rand(120, 2)]
-        >>> Qs = [np.random.rand(100, 3), np.random.rand(120, 4)]
-        >>> T01 = np.random.rand(3, 4)  # transitions between slice 0 and 1
-        >>> Ts = [T01]
-        >>> plot_clusters_from_QT(Ss, Qs, Ts, clustering_type='ml', dotsize=2)
-    """
     # Build the clustering_list
     if clustering_type == "ml":
         clustering_list = max_likelihood_clustering(Qs)
