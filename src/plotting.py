@@ -17,80 +17,6 @@ from .utils.clustering import max_likelihood_clustering, reference_clustering
 ################################################################################################
 
 
-def get_color_dict(
-    labels_list: List[np.ndarray],
-    cmap: str = "tab"
-) -> Dict[int, Tuple[float, float, float, float]]:
-    """
-    Create a dictionary mapping unique cluster labels to distinct colors.
-
-    This function collects all unique values from a list of label arrays
-    (e.g., cluster assignments) and assigns each a color. By default, it uses
-    the combined 'tab20', 'tab20b', and 'tab20c' colormaps, cycling through
-    them as needed. If `cmap` is not 'tab', it uses a simple HSV-based
-    generation scheme instead.
-
-    Args:
-        labels_list (List[np.ndarray]):
-            A list of 1D arrays (e.g., cluster label assignments). Each array can
-            have an arbitrary length. The function will take the union of all unique
-            labels across these arrays.
-        cmap (str, optional):
-            Which colormap scheme to use. 
-            - 'tab': combine 'tab20', 'tab20b', and 'tab20c' (good for up to ~60 clusters).
-            - otherwise: generate colors using a simple HSV approach.
-            Defaults to 'tab'.
-
-    Returns:
-        Dict[int, Tuple[float, float, float, float]]:
-            A dictionary where keys are the unique labels (integers), and values
-            are RGBA color tuples (floats in [0, 1]) suitable for Matplotlib plotting.
-
-    Example:
-        >>> import numpy as np
-        >>> labels_list = [np.array([0, 1, 2]), np.array([2, 3, 4])]
-        >>> color_map = get_color_dict(labels_list, cmap="tab")
-        >>> print(color_map)
-        {0: (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0), 
-         1: (...), 
-         ... }
-    """
-    # Collect all unique labels across the list of label arrays
-    unique_values = np.unique(np.concatenate(labels_list))
-
-    # Handle 'tab' vs. fallback colormap
-    if cmap == "tab":
-        # Combine tab20, tab20b, tab20c
-        cmap_tab20 = plt.get_cmap("tab20")
-        cmap_tab20b = plt.get_cmap("tab20b")
-        cmap_tab20c = plt.get_cmap("tab20c")
-
-        colors_tab20 = [cmap_tab20(i) for i in range(cmap_tab20.N)]
-        colors_tab20b = [cmap_tab20b(i) for i in range(cmap_tab20b.N)]
-        colors_tab20c = [cmap_tab20c(i) for i in range(cmap_tab20c.N)]
-
-        combined_colors = colors_tab20 + colors_tab20b + colors_tab20c
-
-        print(f"Total 'tab' colors available: {len(combined_colors)}")
-        print(f"Number of unique labels: {len(unique_values)}")
-
-        # Cycle through combined_colors if we have more unique labels than colors
-        colors = [
-            combined_colors[i % len(combined_colors)]
-            for i in range(len(unique_values))
-        ]
-    else:
-        # Simple HSV-based color generation
-        num_labels = len(unique_values)
-        colors = [
-            mcolors.hsv_to_rgb((i / num_labels, 1, 1)) + (1.0,)  # (R, G, B, A=1)
-            for i in range(num_labels)
-        ]
-
-    # Construct the dictionary from label -> color
-    color_dict = dict(zip(unique_values, colors))
-    return color_dict
-
 
 def hex_to_rgba(hex_color: str, alpha: float = 1.0) -> Tuple[float, float, float, float]:
     """
@@ -626,7 +552,7 @@ def plot_labeled_differentiation(
     # Optional: save figure
     if save_name is not None:
         plt.savefig(save_name, dpi=300, transparent=True,
-                    bbox_inches="tight", facecolor="black")
+                    bbox_inches="tight", facecolor="white")
     
     plt.rcParams['figure.dpi'] = 300
     plt.show()
