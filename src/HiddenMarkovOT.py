@@ -554,7 +554,9 @@ class HM_OT:
             
             Q0 = self.Q_gammas[i]
             R0 = self.Q_gammas[i+1]
-            init_args = (Q0, R0, None)
+            
+            T0 = torch.outer( torch.sum(Q0, axis=0), torch.sum(R0, axis=0) ).to(self.device).type(self.dtype)
+            init_args = (Q0, R0, T0)
             
             Q,R,T, _errs = FRLC_LR_opt(C_factors, 
                                        A_factors, 

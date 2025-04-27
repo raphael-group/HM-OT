@@ -129,7 +129,7 @@ def plot_clustering_list(
     slices = [S - np.mean(S, axis=0) for S in spatial_list]
 
     # Obtain color dict from get_diffmap_inputs (ignoring population_list, label_list)
-    _, _, color_dict = get_diffmap_inputs(clustering_list, clustering_type, cmap)
+    _, _, color_dict = get_diffmap_inputs(clustering_list, clustering_type)
 
     # Determine global x/y bounds so all subplots share the same limits
     all_spatial = np.vstack(slices)

@@ -118,7 +118,8 @@ def convert_adata(adata,
                   device='cpu',
                   compute_Q = True,
                   spatial = True, 
-                  dist_rank=100, 
+                  dist_rank=100,
+                  dist_rank_2=100,
                   dist_eps=0.02
                  ):
     
@@ -157,7 +158,9 @@ def convert_adata(adata,
             cell_type_key. Defaults to True.
         spatial (bool, optional): Whether to compute a low-rank approximation of 
             spatial distances. Defaults to True.
-        dist_rank (int, optional): The rank used in `low_rank_distance_factorization`. 
+        dist_rank (int, optional): The rank used in `low_rank_distance_factorization` of inter-slice costs.  
+            Defaults to 100.
+        dist_rank_2 (int, optional): The rank used in `low_rank_distance_factorization` of the intra-slice costs.
             Defaults to 100.
         dist_eps (float, optional): Epsilon parameter for the low-rank factorization 
             method. Defaults to 0.02.
@@ -203,7 +206,7 @@ def convert_adata(adata,
             else:
                 raise ValueError(f"Neither spatial_key={spatial_key} in `obs` nor `{fallback_spatial_key}` in `obsm` found.")
             
-            A_rep = low_rank_distance_factorization( spatial_coords, spatial_coords, dist_rank, dist_eps, device=device )
+            A_rep = low_rank_distance_factorization( spatial_coords, spatial_coords, dist_rank_2, dist_eps, device=device )
             c = estimate_max_norm( A_rep[0] , A_rep[1] )
             A_rep = norm_factors( A_rep, c**1/2 )
             A_factors_sequence.append( (A_rep[0].to(dtype).to(device), A_rep[1].to(dtype).to(device)) )
@@ -241,6 +244,91 @@ def convert_adata(adata,
     
     return C_factors_sequence, A_factors_sequence, Qs, labels, rank_list, spatial_sequence
 
+
+def convert_adata_pairwise(adata_pairs,
+                  timepoints, 
+                  replicates = None, 
+                  cell_type_key = 'cellstate', 
+                  timepoint_key = 'timepoint', 
+                  replicate_key = 'orig.ident', 
+                  spatial_key = ['x_loc', 'y_loc'],
+                  fallback_spatial_key = 'spatial',
+                  feature_key = 'X_pca', 
+                  dtype=torch.float32, 
+                  device='cpu',
+                  compute_Q = True,
+                  spatial = True, 
+                  dist_rank=100,
+                  dist_rank_2=100,
+                  dist_eps=0.02, normalize=False
+                 ):
+    
+    N_pairs = len(adata_pairs)
+    # prepare outputs for N = N_pairs+1 unique slices
+    A_factors = []
+    Qs = [None]*(N_pairs+1)
+    labels = [None]*(N_pairs+1)
+    spatial_coords = [None]*(N_pairs+1)
+
+    # helper for slice-level work
+    def process_slice(adata_slice, idx):
+        # spatial A
+        if spatial:
+            if all(k in adata_slice.obs.columns for k in spatial_key):
+                coords = adata_slice.obs[list(spatial_key)].to_numpy()
+            else:
+                coords = adata_slice.obsm[fallback_spatial_key]
+            coords_t = torch.tensor(coords, dtype=dtype, device=device)
+            A0, A1 = low_rank_distance_factorization(coords_t, coords_t,
+                                                     dist_rank_2, dist_eps,
+                                                     device=device)
+            if normalize:
+                c = estimate_max_norm(A0, A1)
+                A0, A1 = norm_factors((A0, A1), c**.5)
+            A_factors.append((A0.to(dtype), A1.to(dtype)))
+            spatial_coords[idx] = coords
+        else:
+            A_factors.append(None)
+
+        # cluster Q
+        if compute_Q:
+            Qmat, lab = _compute_Q(adata_slice, cell_type_key=cell_type_key)
+            Qs[idx] = torch.tensor(Qmat, dtype=dtype, device=device)
+            labels[idx] = lab
+
+    # 1) walk through each pair, split into two slices
+    C_factors = []
+    rank_list = []
+
+    for i, joint in enumerate(adata_pairs):
+        t1, t2 = timepoints[i], timepoints[i+1]
+        
+        # split
+        ad1 = joint[joint.obs[timepoint_key] == t1].copy()
+        ad2 = joint[joint.obs[timepoint_key] == t2].copy()
+        
+        # process the first slice only on the first occurrence
+        if i == 0:
+            process_slice(ad1, idx=0)
+        
+        # always process the second slice of each pair
+        process_slice(ad2, idx=i+1)
+        
+        # compute between-slice cost C
+        X1 = torch.tensor(ad1.obsm[feature_key], dtype=dtype, device=device)
+        X2 = torch.tensor(ad2.obsm[feature_key], dtype=dtype, device=device)
+        C0, C1 = low_rank_distance_factorization(X1, X2,
+                                                 dist_rank, dist_eps,
+                                                 device=device)
+        if normalize:
+            c = estimate_max_norm(C0, C1)
+            C0, C1 = norm_factors((C0, C1), c**.5)
+        C_factors.append((C0.to(dtype), C1.to(dtype)))
+        
+        if compute_Q:
+            rank_list.append((len(labels[i]), len(labels[i+1])))
+    
+    return C_factors, A_factors, Qs, labels, rank_list, spatial_coords
 
 
 def low_rank_distance_factorization(X1, X2, r, eps, device='cpu', dtype=torch.float64):
