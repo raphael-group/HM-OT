@@ -203,8 +203,20 @@ class HM_OT:
         if warmup:
             # Fix Qs from annotations
             self.Q_gammas = Qs_IC
+            
+            max_iter = self.max_iter
+            min_iter = self.min_iter
+            gamma = self.gamma
+            # TODO: Add warmup iters as separate parameter.
+            self.max_iter = 10
+            self.min_iter = 10
+            self.gamma = 5
+            
             # Impute transition matrices between annotations with a warm-up
             self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+            self.max_iter = max_iter
+            self.min_iter = min_iter
+            self.gamma = gamma
         else:
             self.T_gammas = [None] * len(C_factors_sequence)
         
@@ -555,8 +567,8 @@ class HM_OT:
             Q0 = self.Q_gammas[i]
             R0 = self.Q_gammas[i+1]
             
-            T0 = torch.outer( torch.sum(Q0, axis=0), torch.sum(R0, axis=0) ).to(self.device).type(self.dtype)
-            init_args = (Q0, R0, T0)
+            # T0 = torch.outer( torch.sum(Q0, axis=0), torch.sum(R0, axis=0) ).to(self.device).type(self.dtype)
+            init_args = (Q0, R0, None)
             
             Q,R,T, _errs = FRLC_LR_opt(C_factors, 
                                        A_factors, 
