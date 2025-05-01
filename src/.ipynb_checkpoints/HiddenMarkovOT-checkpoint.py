@@ -198,8 +198,6 @@ class HM_OT:
         if Qs_IC is None:
             Qs_IC = [None] * len(A_factors_sequence)
         
-         # Clear Q_gammas
-        self.Q_gammas = []
         if warmup:
             # Fix Qs from annotations
             self.Q_gammas = Qs_IC
@@ -207,6 +205,7 @@ class HM_OT:
             max_iter = self.max_iter
             min_iter = self.min_iter
             gamma = self.gamma
+            
             # TODO: Add warmup iters as separate parameter.
             self.max_iter = 10
             self.min_iter = 10
@@ -217,8 +216,20 @@ class HM_OT:
             self.max_iter = max_iter
             self.min_iter = min_iter
             self.gamma = gamma
+            
         else:
             self.T_gammas = [None] * len(C_factors_sequence)
+        
+        # Clear Q_gammas, e.g. after warm-start on transitions, and infer them
+        self.Q_gammas = []
+        
+        if len(A_factors_sequence) == 2:
+            # Manually handle n = 2 case with one FRLC call + return
+            self.gamma_smoothing_double(C_factors_sequence,
+                                        A_factors_sequence,
+                                        Qs_IC = Qs_IC,
+                                        Qs_freeze = Qs_freeze)
+            return
         
         # Run alpha pass
         self.alpha_pass(C_factors_sequence,
@@ -285,6 +296,8 @@ class HM_OT:
         
         # Clearing alpha matrices for space 
         self.Q_alphas = []
+        
+        # Impute smoothed transitions between final clusters
         self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
         
         return
@@ -604,7 +617,7 @@ class HM_OT:
 
 
     def stabilize_Q_init(self, Q, rand_perturb = False, 
-                         lambda_factor = 0.05, max_inneriters_balanced= 300
+                         lambda_factor = 0.01, max_inneriters_balanced= 300
                         ):
         """
         Initial condition Q (e.g. from annotation, if doing a warm-start) will not optimize if one-hot.
@@ -631,7 +644,7 @@ class HM_OT:
             
             return Q_init
 
-    def gamma_smoothing_with_warmup(self, 
+    def gamma_smoothing_triple(self, 
                                      C_factors_sequence, 
                                      A_factors_sequence, 
                                      Qs_annotated):
@@ -654,16 +667,11 @@ class HM_OT:
         # Fix Qs from annotations
         self.Q_gammas = Qs_annotated
         
-        # Impute transition matrices between annotations with a warm-up
-        self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
-        
         if len(Qs_annotated) == 3:
             
             # Initialize as arguments, fixed during the optimization to infer t-variable
             init_args = (self.Q_gammas[0], self.Q_gammas[2])
             _Q_t = self.Q_gammas[1]
-            
-            _T_tm1t, _T_ttp1 = self.T_gammas
             
             # Initialize matrices
             C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
@@ -691,16 +699,64 @@ class HM_OT:
                                                             init_args=init_args,
                                                             printCost=self.printCost,
                                                             _gQ_t=self.proportions[1],
-                                                            _Q_t = self.stabilize_Q_init(_Q_t),
-                                                            _T_tm1t = _T_tm1t,
-                                                            _T_ttp1 = _T_ttp1)
+                                                            _Q_t = self.stabilize_Q_init(_Q_t))
             
             self.T_gammas = [T_tm1t, T_ttp1]
             self.Q_gammas[1] = Q_t
-        
+            
+            # Impute transition matrices between annotations
+            self.impute_smoothed_transitions(C_factors_sequence, A_factors_sequence)
+            
         else:
             raise NotImplementedError("Smoothing with warmup on transitions currently assumes 3 timepoints! " + \
                                        "Try supervised HM-OT or fully-unsupervised without warmup instead.")
+            
+        return
+
+    def gamma_smoothing_double(self, 
+                               C_factors_sequence, 
+                               A_factors_sequence, 
+                               Qs_IC = None, 
+                               Qs_freeze = None):
+        
+        init_args=(self.stabilize_Q_init(Qs_IC[0]),
+                   self.stabilize_Q_init(Qs_IC[1]),
+                   self.T_gammas[0])
+        
+        r1, r2 = self.rank_list[0]
+        C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
+        
+        # Update if not frozen; defaults to True for both
+        updateQ = not Qs_freeze[0]
+        updateR = not Qs_freeze[1]
+        
+        Q,R,T, errs = FRLC_LR_opt(C_factors,
+                                  A_factors,
+                                  B_factors,
+                                  a=self.a,
+                                  b=self.b,
+                                  r=r1,
+                                  r2=r2,
+                                  max_iter=self.max_iter,
+                                  device=self.device,
+                                  returnFull=self.returnFull,
+                                  alpha=self.alpha,
+                                  min_iter=self.min_iter,
+                                  initialization=self.initialization,
+                                  tau_out=self.tau_out,
+                                  tau_in=self.tau_in,
+                                  gamma=self.gamma,
+                                  dtype=self.dtype,
+                                  updateR = updateR,
+                                  updateQ = updateQ,
+                                  updateT = True,
+                                  init_args=init_args,
+                                  printCost=self.printCost,
+                                 _gQ=self.proportions[0],
+                                 _gR=self.proportions[1])
+        
+        self.Q_gammas = [ Q, R ]
+        self.T_gammas = [ T ]
         
         return
 
