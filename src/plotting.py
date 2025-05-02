@@ -387,7 +387,8 @@ def plot_clusters_from_QT(
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
     flip: bool = False,
-    subplot_labels: Optional[List[Optional[List[str]]]] = None
+    subplot_labels: Optional[List[Optional[List[str]]]] = None,
+    full_P = True
 ) -> None:
     # Build the clustering_list
     if clustering_type == "ml":
@@ -395,7 +396,7 @@ def plot_clusters_from_QT(
     elif clustering_type == "reference":
         if reference_index is None:
             raise ValueError("Reference index is required for reference clustering.")
-        clustering_list = reference_clustering(Qs, Ts, reference_index)
+        clustering_list = reference_clustering(Qs, Ts, reference_index, full_P=full_P)
     else:
         raise ValueError(f"Invalid clustering_type: '{clustering_type}'.")
 
