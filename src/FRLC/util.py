@@ -227,6 +227,8 @@ def project_Unbalanced(xi1, a, g, N1, r, gamma_k, tau, max_iter = 50, \
 
 def logSinkhorn(grad, a, b, gamma_k, max_iter = 50, \
              device='cpu', dtype=torch.float64, balanced=True, unbalanced=False, tau=None, tau2=None):
+
+    a, b = a / a.sum(), b / b.sum()
     
     log_a = torch.log(a)
     log_b = torch.log(b)
