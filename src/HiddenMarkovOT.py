@@ -776,7 +776,9 @@ class HM_OT:
             R = self.Q_gammas[i+1]
 
             gQ = torch.sum(Q, axis=0)
+            one_r = torch.ones(gQ.shape[0], device=self.device)
             gR = torch.sum(R, axis=0)
+            one_r2 = torch.ones(gR.shape[0], device=self.device)
 
             T = self.T_gammas[i]
             
