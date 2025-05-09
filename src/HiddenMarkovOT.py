@@ -760,6 +760,51 @@ class HM_OT:
         
         return
 
+    def compute_total_cost(self, C_factors_sequence, A_factors_sequence):
+        
+        cost = 0.0
+        cost_W = 0.0
+        cost_GW = 0.0
+        
+        for i in range(len(C_factors_sequence)):
+
+            A_factors = A_factors_sequence[i]
+            B_factors = A_factors_sequence[i+1]
+            C_factors = C_factors_sequence[i]
+
+            Q = self.Q_gammas[i]
+            R = self.Q_gammas[i+1]
+
+            gQ = torch.sum(Q, axis=0)
+            gR = torch.sum(R, axis=0)
+
+            T = self.T_gammas[i]
+            
+            Lambda = torch.diag(1/gQ) @ T @ torch.diag(1/gR)
+            
+            primal_cost = torch.trace(((Q.T @ C_factors[0]) @ (C_factors[1] @ R)) @ Lambda.T)
+            cost_W += primal_cost
+            
+            if A_factors is not None and B_factors is not None:
+                X = R @ ((Lambda.T @ ((Q.T @ A_factors[0]) @ (A_factors[1] @ Q)) @ Lambda) @ (R.T @ B_factors[0])) @ B_factors[1]
+                GW_cost = - 2 * torch.trace(X) # add these: one_r.T @ M1 @ one_r + one_r.T @ M2 @ one_r
+                del X
+                A1_tild, A2_tild = util.hadamard_square_lr(A_factors[0], A_factors[1].T, device=self.device)
+                GW_cost += torch.inner(A1_tild.T @ (Q @ one_r), A2_tild.T @ (Q @ one_r))
+                del A1_tild, A2_tild
+                B1_tild, B2_tild = util.hadamard_square_lr(B_factors[0], B_factors[1].T, device=self.device)
+                GW_cost += torch.inner(B1_tild.T @ (R @ one_r2), B2_tild.T @ (R @ one_r2))
+                del B1_tild, B2_tild
+                # Update cost
+                cost_GW += GW_cost
+                cost += ((1-self.alpha)*primal_cost + self.alpha*GW_cost).cpu()
+            else:
+                cost_GW = 0
+
+        print(f'Final Cost: {cost}; cost_GW: {cost_GW}, cost_W: {cost_W}')
+        
+        return cost
+
 
 
 
