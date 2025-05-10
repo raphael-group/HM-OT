@@ -1,5 +1,6 @@
 import random
 import torch
+import os
 import matplotlib.pyplot as plt
 from torch.distributions.multivariate_normal import MultivariateNormal
 import numpy as np
@@ -718,3 +719,14 @@ def get_clusters(Qs, Rs, Ts, spatial_list, ancestral=True):
             cluster_label_list.append(ml_labels_H1)
             
     return cluster_label_list
+
+def seed_everything(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    return

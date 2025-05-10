@@ -121,7 +121,8 @@ def get_Jaccard_Table(adata_1, adata_2,
                                  top_n=n_top_genes)
     top_genes2 = get_top_de_genes(adata2, 
                                  top_n=n_top_genes)
-    
+
+    '''
     if print_DE:
         print('Printing DE Genes for Time 1.')
         for cluster, df in top_genes1.items():
@@ -130,7 +131,7 @@ def get_Jaccard_Table(adata_1, adata_2,
         print('Printing DE Genes for Time 2.')
         for cluster, df in top_genes2.items():
             print(f"\n=== Top DE Genes for Cluster {cluster} ===")
-            print(df.to_string(index=False))
+            print(df.to_string(index=False))'''
 
     top_1 = get_top_de_genes(adata1, top_n=n_top_genes)
     top_2 = get_top_de_genes(adata2, top_n=n_top_genes)
@@ -147,6 +148,23 @@ def get_Jaccard_Table(adata_1, adata_2,
             intersection = genes1 & genes2
             union = genes1 | genes2
             jaccard_matrix[i, j] = len(intersection) / len(union) if union else 0.0
+
+            if c1 == c2 and print_DE is True:
+                print(f"\n=== Cluster {c1} ===")
+                print(f"Intersection genes ({len(intersection)}):\n", sorted(intersection))
+                
+                df1 = top_1[c1]
+                df2 = top_2[c1]
+                
+                # slice the two DE tables down to just those intersecting genes
+                df1_int = df1[df1['gene'].isin(intersection)].reset_index(drop=True)
+                df2_int = df2[df2['gene'].isin(intersection)].reset_index(drop=True)
+                
+                print("\nTop DE stats for time 1 (intersection):")
+                print(df1_int.to_string(index=False))
+                
+                print("\nTop DE stats for time 2 (intersection):")
+                print(df2_int.to_string(index=False))
     
     jaccard_df = pd.DataFrame(jaccard_matrix, index=clusters1, columns=clusters2)
     
