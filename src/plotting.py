@@ -203,6 +203,7 @@ def plot_clustering_list(
     title: Optional[str] = None,
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
+    key_dotsize: float = 1.0,
     flip: bool = False,
     subplot_labels: Optional[List[Optional[List[str]]]] = None
 ) -> None:
@@ -283,7 +284,7 @@ def plot_clustering_list(
             handles, lbls = ax.get_legend_handles_labels()
 
             for handle in handles:
-                handle.set_markersize(50)  # Adjust this value to change dot size
+                handle.set_markersize(50*key_dotsize)  # Adjust this value to change dot size
             
             # Create new labels list that matches the order of handles
             new_labels = []
@@ -308,7 +309,7 @@ def plot_clustering_list(
                 bbox_to_anchor=(1, 0.5),
                 frameon=False,
                 title="",
-                labelspacing=4,
+                labelspacing=4 * key_dotsize,
                 fontsize=20
             )
 
@@ -536,6 +537,7 @@ def plot_clusters_from_QT(
     title: Optional[str] = None,
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
+    key_dotsize: float = 1.0,
     flip: bool = False,
     subplot_labels: Optional[List[Optional[List[str]]]] = None,
     full_P = True
@@ -560,6 +562,7 @@ def plot_clusters_from_QT(
         title=title,
         save_name=save_name,
         dotsize=dotsize,
+        key_dotsize=key_dotsize,
         flip=flip,
         subplot_labels=subplot_labels
     )
@@ -1076,8 +1079,7 @@ def diffmap_from_QT_sankey(
     # 2) Generate population_list, labels_list, color_dict
     population_list, labels_list, color_dict = get_diffmap_inputs(
         clustering_list,
-        clustering_type,
-        cmap=cmap
+        clustering_type
     )
 
     # 3) Determine which Sankey plotting function to call
