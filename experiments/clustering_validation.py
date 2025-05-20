@@ -10,7 +10,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import scanpy as sc
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+from scipy.stats import pearsonr
 
 def compute_centroids(X, Q):
     gQ = np.sum(Q, axis = 0)
@@ -233,4 +233,158 @@ def get_top_de_genes(adata, top_n=10):
     
     return top_genes
 
+def get_zscore_corr_summary(adata_1, adata_2, clustering1, clustering2, 
+                             cluster_label='cluster', n_top_genes=50,
+                             overlap_lst=None, plot=False):
+    """
+    Computes Z-score correlations across DE genes for co-clustered groups between timepoints.
+    Returns a DataFrame of results with optional scatterplots.
+    """
+    if overlap_lst is not None:
+        mask1 = np.isin(clustering1, overlap_lst)
+        mask2 = np.isin(clustering2, overlap_lst)
+        adata1 = adata_1[mask1].copy()
+        adata2 = adata_2[mask2].copy()
+        clustering1 = np.array(clustering1)[mask1]
+        clustering2 = np.array(clustering2)[mask2]
+    else:
+        adata1 = adata_1.copy()
+        adata2 = adata_2.copy()
+    
+    adata1.obs[cluster_label] = clustering1
+    adata2.obs[cluster_label] = clustering2
+    
+    # Normalize and log1p
+    sc.pp.normalize_total(adata1)
+    sc.pp.log1p(adata1)
+    sc.pp.normalize_total(adata2)
+    sc.pp.log1p(adata2)
 
+    adata1.obs[cluster_label] = adata1.obs[cluster_label].astype('category')
+    adata2.obs[cluster_label] = adata2.obs[cluster_label].astype('category')
+
+    sc.tl.rank_genes_groups(adata1, groupby=cluster_label, method='wilcoxon')
+    sc.tl.rank_genes_groups(adata2, groupby=cluster_label, method='wilcoxon')
+    
+    def get_de_table(adata):
+        de = adata.uns['rank_genes_groups']
+        groups = de['names'].dtype.names
+        df_dict = {}
+        for group in groups:
+            df_dict[group] = pd.DataFrame({
+                'gene': de['names'][group],
+                'zscore': de['scores'][group]
+            })
+        return df_dict
+
+    de1 = get_de_table(adata1)
+    de2 = get_de_table(adata2)
+    
+    shared_clusters = overlap_lst if overlap_lst is not None else sorted(set(de1.keys()).intersection(de2.keys()))
+    
+    records = []
+
+    for c in shared_clusters:
+        df1 = de1[c].set_index('gene')
+        df2 = de2[c].set_index('gene')
+        
+        common_genes = df1.index.intersection(df2.index)
+        if len(common_genes) < 10:
+            continue
+
+        z1 = df1.loc[common_genes, 'zscore']
+        z2 = df2.loc[common_genes, 'zscore']
+        r, p = pearsonr(z1, z2)
+        records.append({
+            'cluster': c,
+            'pearson_r': r,
+            'pval': p,
+            'n_genes': len(common_genes)
+        })
+
+        if plot:
+            plt.figure(figsize=(5, 4))
+            plt.scatter(z1, z2, alpha=0.6)
+            plt.axhline(0, color='gray', linestyle='--', linewidth=0.5)
+            plt.axvline(0, color='gray', linestyle='--', linewidth=0.5)
+            plt.xlabel('Z-scores at time 1')
+            plt.ylabel('Z-scores at time 2')
+            plt.title(f'Cluster {c}: Z-score correlation\nr = {r:.2f}, p = {p:.2e}')
+            plt.grid(True, linestyle='--', alpha=0.4)
+            plt.tight_layout()
+            plt.show()
+
+    return pd.DataFrame(records)
+
+'''
+def plot_zscore_correlation_per_cluster(adata_1, adata_2, clustering1, clustering2, 
+                                         cluster_label='cluster', n_top_genes=50, overlap_lst=None):
+    if overlap_lst is not None:
+        mask1 = np.isin(clustering1, overlap_lst)
+        mask2 = np.isin(clustering2, overlap_lst)
+        adata1 = adata_1[mask1].copy()
+        adata2 = adata_2[mask2].copy()
+        clustering1 = np.array(clustering1)[mask1]
+        clustering2 = np.array(clustering2)[mask2]
+    else:
+        adata1 = adata_1.copy()
+        adata2 = adata_2.copy()
+    
+    adata1.obs[cluster_label] = clustering1
+    adata2.obs[cluster_label] = clustering2
+    
+    sc.pp.normalize_total(adata1)
+    sc.pp.log1p(adata1)
+    sc.pp.normalize_total(adata2)
+    sc.pp.log1p(adata2)
+
+    adata1.obs[cluster_label] = adata1.obs[cluster_label].astype('category')
+    adata2.obs[cluster_label] = adata2.obs[cluster_label].astype('category')
+
+    # Run DE
+    sc.tl.rank_genes_groups(adata1, groupby=cluster_label, method='wilcoxon')
+    sc.tl.rank_genes_groups(adata2, groupby=cluster_label, method='wilcoxon')
+
+    # All genes (not just top)
+    def get_de_table(adata):
+        de = adata.uns['rank_genes_groups']
+        groups = de['names'].dtype.names
+        df_dict = {}
+        for group in groups:
+            df_dict[group] = pd.DataFrame({
+                'gene': de['names'][group],
+                'zscore': de['scores'][group]
+            })
+        return df_dict
+    
+    de1 = get_de_table(adata1)
+    de2 = get_de_table(adata2)
+    
+    shared_clusters = overlap_lst if overlap_lst is not None else set(de1.keys()).intersection(de2.keys())
+    
+    # Plot correlations
+    for c in shared_clusters:
+        df1 = de1[c].set_index('gene')
+        df2 = de2[c].set_index('gene')
+        
+        common_genes = df1.index.intersection(df2.index)
+        if len(common_genes) < 10:
+            continue  # Skip underpowered clusters
+        
+        z1 = df1.loc[common_genes, 'zscore']
+        z2 = df2.loc[common_genes, 'zscore']
+        r, p = pearsonr(z1, z2)
+
+        # Plot
+        plt.figure(figsize=(5, 4))
+        plt.scatter(z1, z2, alpha=0.6)
+        plt.axhline(0, color='gray', linestyle='--', linewidth=0.5)
+        plt.axvline(0, color='gray', linestyle='--', linewidth=0.5)
+        plt.xlabel('Z-scores at time 1')
+        plt.ylabel('Z-scores at time 2')
+        plt.title(f'Cluster {c}: Z-score correlation\nr = {r:.2f}, p = {p:.2e}')
+        plt.grid(True, linestyle='--', alpha=0.4)
+        plt.tight_layout()
+        plt.show()'''
+
+        

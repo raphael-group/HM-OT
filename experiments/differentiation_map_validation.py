@@ -184,7 +184,7 @@ def score_from_graph(_Qs, _Ts, _labels_Q, timepoints,
     return edge_scores, edge_scores_diagonal
 
 
-def yield_differentiation_graph(nodes_df, edges_df, plotting=False):
+def yield_differentiation_graph(nodes_df, edges_df, plotting=False, include_downstream=False):
     
     # Assume G is your graph
     G = nx.DiGraph()
@@ -204,6 +204,14 @@ def yield_differentiation_graph(nodes_df, edges_df, plotting=False):
         # Ensure x and y are in the graph
         if row["x"] in G.nodes and row["y"] in G.nodes:
             G.add_edge(row["x"], row["y"], edge_type=row["edge_type"])
+    
+    if include_downstream:
+        # Iterate over source nodes
+        for src in list(G.nodes):
+            for dst in nx.descendants(G, src):
+                # If descendant of src, then add indirect edge (not time-indexed)
+                if not G.has_edge(src, dst):
+                    G.add_edge(src, dst, edge_type="indirect")
     
     # Prepare for drawing
     labels_G = {n: G.nodes[n]["label"] for n in G.nodes}
