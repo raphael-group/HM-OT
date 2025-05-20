@@ -10,7 +10,7 @@ from typing import List, Union, Dict, Tuple, Optional
 
 import scanpy as sc
 
-from .utils.clustering import max_likelihood_clustering, reference_clustering
+from .utils.clustering import max_likelihood_clustering, reference_clustering, reference_clustering_prime
 
 ################################################################################################
 #   plotting helper functions
@@ -548,7 +548,7 @@ def plot_clusters_from_QT(
     elif clustering_type == "reference":
         if reference_index is None:
             raise ValueError("Reference index is required for reference clustering.")
-        clustering_list = reference_clustering(Qs, Ts, reference_index, full_P=full_P)
+        clustering_list = reference_clustering_prime(Qs, Ts, reference_index, full_P=full_P)
     else:
         raise ValueError(f"Invalid clustering_type: '{clustering_type}'.")
 
