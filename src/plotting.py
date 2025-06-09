@@ -1252,3 +1252,111 @@ def make_sankey(
     else:
         # Default to PNG if not specified or recognized
         fig.write_image(save_basename + '.png')
+
+def plot_diffmap_clusters(
+    X: np.ndarray,
+    time_labels: np.ndarray,
+    Qs: List[np.ndarray],
+    Ts: List[np.ndarray],
+    df: "pd.DataFrame",
+    cluster_key: str = 'cluster_pred',
+    mode: str = 'standard',
+    min_thresh: float = 1e-5,
+    max_lw: float = 8.0,
+    figsize: tuple[int,int] = (16,16),
+    ):
+    """
+    Scatter-plots each point in X colored by its inferred cluster,
+    then overlays arrows between cluster-barycenters according to Ts.
+
+    Parameters
+    ----------
+    X            : (N,2) array of all points across all timepoints
+    time_labels  : length-N int array, giving timepoint for each row of X
+    Qs           : list of length T factor matrices, Qs[t].shape = (n_t, k_t)
+    Ts           : list of length T–1 transition matrices, Ts[t].shape = (k_t, k_{t+1})
+    df           : DataFrame with columns "x","y","timepoint"
+    get_palette_fn : function(labels_list, tag) returning (_, lab_list, color_dict)
+    cluster_key  : column name to store the flattened cluster IDs
+    mode         : passed to max_likelihood_clustering
+    min_thresh   : arrows with weight ≤ this are dropped
+    max_lw       : maximum line‐width for the thickest arrow
+    figsize      : figure size
+
+    Returns
+    -------
+    fig, ax      : the Matplotlib figure and axes
+    """
+    # 1) infer per‐timepoint labels
+    labels_list = max_likelihood_clustering(Qs, mode=mode)
+    labels_list = [np.asarray(lbl) for lbl in labels_list]
+
+    # 2) offset & flatten so that clusters at different t don't collide
+    offset = 0
+    labels_offset = []
+    for lbl in labels_list:
+        labels_offset.append(lbl + offset)
+        offset += lbl.max() + 1
+    labels_flat = np.concatenate(labels_offset)
+    
+    # 3) attach to df
+    df[cluster_key] = labels_flat
+    
+    # 4) build color mapping for seaborn
+    _, lab_list, color_dict = get_diffmap_inputs(labels_list, 'ml')
+    
+    # 5) base scatter
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.scatterplot(
+        data=df,
+        x="x", y="y",
+        hue=cluster_key,
+        palette=color_dict,
+        s=60, linewidth=0.3, edgecolor="k",
+        ax=ax
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel(r"$x$")
+    ax.set_ylabel(r"$y$")
+    ax.legend(title=cluster_key, bbox_to_anchor=(1.02, 1), loc="upper left")
+    sns.despine()
+    plt.tight_layout()
+
+    # 6) overlay arrows for each t → t+1
+    for t, T in enumerate(Ts):
+        # slice point‐clouds
+        X_t   = X[time_labels == t]
+        X_tp1 = X[time_labels == t+1]
+
+        Q_src = Qs[t]
+        Q_tgt = Qs[t+1]
+
+        # barycenters: (k_t × 2), (k_{t+1} × 2)
+        sums_src = Q_src.sum(axis=0)[:,None]
+        sums_tgt = Q_tgt.sum(axis=0)[:,None]
+        bary_src = (Q_src.T @ X_t)   / sums_src
+        bary_tgt = (Q_tgt.T @ X_tp1) / sums_tgt
+
+        norm = T.max() if T.max()>0 else 1.0
+        src_ids = np.unique(labels_list[t])
+        tgt_ids = np.unique(labels_list[t+1])
+
+        for i, src in enumerate(src_ids):
+            for j, tgt in enumerate(tgt_ids):
+                w = T[i, j]
+                if w <= min_thresh:
+                    continue
+                start = bary_src[i]
+                end   = bary_tgt[j]
+                ax.annotate(
+                    "",
+                    xy=end, xytext=start,
+                    arrowprops=dict(
+                        arrowstyle="->",
+                        lw=(w/norm)*max_lw,
+                        alpha=0.7,
+                        color="gray",
+                    )
+                )
+
+    return fig, ax
