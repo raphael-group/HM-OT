@@ -137,6 +137,12 @@ def FRLC_opt(C, a=None, b=None, A=None, B=None, tau_in = 50, tau_out=50, \
                                                     gamma, full_rank=full_rank, \
                                                 device=device, dtype=dtype, \
                                                     max_iter = max_inneriters_balanced)
+        '''
+        Q, R, T = stabilize_Q_init(Q, device=device, dtype=dtype), 
+        stabilize_Q_init(R, device=device, dtype=dtype), 
+        stabilize_Q_init(T, device=device, dtype=dtype)
+        Lambda = torch.diag(1/ (Q.T @ one_N1)) @ T @ torch.diag(1/ (R.T @ one_N2))
+        '''
     else:
         Q, R, T = init_args
         Lambda = torch.diag(1/ (Q.T @ one_N1)) @ T @ torch.diag(1/ (R.T @ one_N2))
@@ -399,6 +405,9 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
                                                     gamma, full_rank=full_rank, \
                                                 device=device, dtype=dtype, \
                                                     max_iter = max_inneriters_balanced)
+        '''
+        Q, R, T = stabilize_Q_init(Q, device=device, dtype=dtype), stabilize_Q_init(R, device=device, dtype=dtype), stabilize_Q_init(T, device=device, dtype=dtype)
+        Lambda = torch.diag(1/ (Q.T @ one_N1)) @ T @ torch.diag(1/ (R.T @ one_N2))'''
     else:
         # Initialize to given factors
         Q, R, T = init_args
@@ -411,6 +420,10 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
                                                     gamma, full_rank=full_rank, \
                                                 device=device, dtype=dtype, \
                                                     max_iter = max_inneriters_balanced)
+            
+            '''
+            _Q, _R, _T = stabilize_Q_init(_Q, device=device, dtype=dtype), stabilize_Q_init(_R, device=device, dtype=dtype), stabilize_Q_init(_T, device=device, dtype=dtype)'''
+            
             if Q is None:
                 Q = _Q
             if R is None:
@@ -512,4 +525,22 @@ def FRLC_LR_opt(C_factors, A_factors, B_factors, a=None, b=None, tau_in = 50, ta
         return Q, R, T, errs
 
 
+def stabilize_Q_init(Q, rand_perturb = False, 
+                     lambda_factor = 0.9, max_inneriters_balanced= 300, 
+                     device='cpu', dtype=torch.float64):
+    """
+    Initial condition Q (e.g. from annotation, if doing a warm-start) will not optimize if one-hot.
+                ---e.g. if most of Q_t is sparse/a clustering, logQ_t = - inf which is unstable!
+    
+    Perturb to ensure there is non-zero mass everywhere.
+    """
+    # Add a small random or trivial outer product perturbation to ensure stability of one-hot encoded Q
+    N2, r2 = Q.shape[0], Q.shape[1]
+    b, gQ = torch.sum(Q, axis = 1), torch.sum(Q, axis = 0)
+    eps_Q = torch.outer(b, gQ).to(device).type(dtype)
+    
+    # Yield perturbation, return
+    Q_init = ( 1 - lambda_factor ) * Q + lambda_factor * eps_Q
+    
+    return Q_init
 

@@ -226,12 +226,15 @@ def project_Unbalanced(xi1, a, g, N1, r, gamma_k, tau, max_iter = 50, \
     return u, v
 
 def logSinkhorn(grad, a, b, gamma_k, max_iter = 50, \
-             device='cpu', dtype=torch.float64, balanced=True, unbalanced=False, tau=None, tau2=None):
+             device='cpu', dtype=torch.float64, \
+                balanced=True, unbalanced=False, \
+                tau=None, tau2=None, tol=1e-12, \
+               recenter_every = 10):
 
     a, b = a / a.sum(), b / b.sum()
     
-    log_a = torch.log(a)
-    log_b = torch.log(b)
+    log_a = torch.log(a).to(device)
+    log_b = torch.log(b).to(device)
 
     n, m = a.size(0), b.size(0)
     
@@ -259,6 +262,12 @@ def logSinkhorn(grad, a, b, gamma_k, max_iter = 50, \
             f_k = (f_k + epsilon*(log_a - torch.logsumexp(Cost(f_k, g_k, grad, epsilon, device=device), axis=1)) )
             g_k = ubc*(g_k + epsilon*(log_b - torch.logsumexp(Cost(f_k, g_k, grad, epsilon, device=device), axis=0)) )
 
+        '''
+        if i % recenter_every == 0:
+            alpha = f_k.mean()
+            f_k -= alpha
+            g_k += alpha'''
+    
     P = torch.exp(Cost(f_k, g_k, grad, epsilon, device=device))
     
     return P
