@@ -179,7 +179,6 @@ class HM_OT:
             self.proportions = (self.N+1)*[None]
         else:
             self.proportions = proportions
-
     
     def gamma_smoothing(self,
                         C_factors_sequence,
@@ -369,9 +368,15 @@ class HM_OT:
         n, m = C_factors[0].shape[0], C_factors[1].shape[1]
         
         # Whether initialization set to, e.g. annotation
-        init_args=(self.stabilize_Q_init(Qs_IC[0], n=n, r=r1),
-                   self.stabilize_Q_init(Qs_IC[1], n=m, r=r2),
-                   self.stabilize_Q_init(self.T_gammas[0], n=r1, r=r2))
+        init_args=(
+                    self.stabilize_Q_init(Qs_IC[0], n=n, r=r1,
+                                        b = self.proportions[0]),
+                   self.stabilize_Q_init(Qs_IC[1], n=m, r=r2,
+                                        b = self.proportions[1]),
+                   self.stabilize_Q_init(self.T_gammas[0], n=r1, r=r2,
+                                        a = self.proportions[0],
+                                        b = self.proportions[1])
+                  )
         
         # Update if not frozen; defaults to True for both
         updateQ = not Qs_freeze[0]
@@ -416,8 +421,12 @@ class HM_OT:
             Q0 = self.Q_alphas[-1]
             
             init_args = (Q0, 
-                         self.stabilize_Q_init(Qs_IC[i+1],n=m,r=r2),
-                         self.stabilize_Q_init(self.T_gammas[i],n=r1,r=r2))
+                         self.stabilize_Q_init(Qs_IC[i+1],n=m,r=r2,
+                                              b = self.proportions[i+1]),
+                         self.stabilize_Q_init(self.T_gammas[i],n=r1,r=r2,
+                                              a = self.proportions[i],
+                                              b = self.proportions[i+1])
+                        )
             
             updateR = not Qs_freeze[i+1]
             
@@ -479,9 +488,13 @@ class HM_OT:
         n, m = C_factors[0].shape[0], C_factors[1].shape[1]
         
         # Whether a boundary condition is set for time 1
-        init_args=(self.stabilize_Q_init(Qs_IC[self.N-1], n=n, r=r1), 
-                   self.stabilize_Q_init(Qs_IC[self.N], n=m, r=r2), 
-                   self.stabilize_Q_init(self.T_gammas[-1], n=r1, r=r2))
+        init_args=(self.stabilize_Q_init(Qs_IC[self.N-1], n=n, r=r1, 
+                                         b = self.proportions[self.N-1]), 
+                   self.stabilize_Q_init(Qs_IC[self.N], n=m, r=r2, 
+                                         b = self.proportions[self.N]), 
+                   self.stabilize_Q_init(self.T_gammas[-1], n=r1, r=r2, 
+                                         a=self.proportions[self.N-1], 
+                                         b = self.proportions[self.N]))
         
         # Update if not frozen
         updateQ = not Qs_freeze[-2]
@@ -533,9 +546,13 @@ class HM_OT:
             R0 = self.Q_betas[-1]
             
             #init_args = (None, R0, None)
-            init_args = (self.stabilize_Q_init(Qs_IC[i], n=n, r=r1), 
+            init_args = (self.stabilize_Q_init(Qs_IC[i], n=n, r=r1,
+                                               b = self.proportions[i]), 
                          R0, 
-                         self.stabilize_Q_init(self.T_gammas[i], n=r1, r=r2))
+                         self.stabilize_Q_init(self.T_gammas[i], n=r1, r=r2, \
+                                               a = self.proportions[i], \
+                                               b = self.proportions[i+1])
+                        )
             
             # Defaults to True
             updateQ = not Qs_freeze[i]
@@ -599,8 +616,9 @@ class HM_OT:
             R0 = self.Q_gammas[i+1]
             
             # T0 = torch.outer( torch.sum(Q0, axis=0), torch.sum(R0, axis=0) ).to(self.device).type(self.dtype)
-            init_args = (Q0, R0,
-                         self.stabilize_Q_init(None, n=r1, r=r2))
+            init_args = (Q0, R0, self.stabilize_Q_init(None, n=r1, r=r2, \
+                                               a = self.proportions[i], \
+                                               b = self.proportions[i+1]))
             
             Q,R,T, _errs = FRLC_LR_opt(C_factors, 
                                        A_factors, 
@@ -637,7 +655,7 @@ class HM_OT:
 
     def stabilize_Q_init(self, Q, rand_perturb = False, 
                          lambda_factor = 0.01, max_inneriters_balanced= 300,
-                         n = None, r = None
+                         a = None, b = None, n=None, r=None, stabilize = True
                         ):
         """
         Initial condition Q (e.g. from annotation, if doing a warm-start) will not optimize if one-hot.
@@ -646,20 +664,27 @@ class HM_OT:
         Perturb to ensure there is non-zero mass everywhere.
         """
         if Q is None:
-            if n is None and r is None:
-                # Nothing to stabilize -- will start from scratch, let FRLC handle
+            
+            if stabilize is False or n is None or r is None:
+                # Nothing to stabilize -- will start from scratch and let solver (FRLC) handle
                 return None
+                
             else:
                 # Fix random initialization externally (e.g. seeds)
-                a = torch.ones((n), device=self.device, dtype=self.dtype) / n
-                b = torch.ones((r), device=self.device, dtype=self.dtype) / r
+                if a is None:
+                    # Default init to marginals
+                    a = torch.ones((n), device=self.device, dtype=self.dtype) / n
+                if b is None:
+                    # Default init to marginals
+                    b = torch.ones((r), device=self.device, dtype=self.dtype) / r
+                
                 C = torch.rand((n,r), device=self.device, dtype=self.dtype, generator=self.generator)
                 Q_init = util.logSinkhorn(C, a, b, self.gamma, max_iter = self.max_inner_iters_B, 
                                               balanced=True, unbalanced=False, 
                                               device=self.device, dtype=self.dtype)
                 eps_Q = torch.outer(a, b).to(self.device).type(self.dtype)
                 return ( 1 - lambda_factor ) * Q_init + lambda_factor * eps_Q
-                #Q_init
+                
         else:
             # Add a small random or trivial outer product perturbation to ensure stability of one-hot encoded Q
             n, r = Q.shape[0], Q.shape[1]
@@ -710,7 +735,8 @@ class HM_OT:
             # Initialize matrices
             C_factors_tm1t, A_factors_tm1t, B_factors_tm1t = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
             C_factors_ttp1, A_factors_ttp1, B_factors_ttp1 = C_factors_sequence[1], A_factors_sequence[1], A_factors_sequence[2]
-            
+
+            n = self.Q_gammas[1].shape[0]
             r = self.Q_gammas[1].shape[1]
             
             # Learn smoothed clustering Q_t
@@ -733,7 +759,9 @@ class HM_OT:
                                                             init_args=init_args,
                                                             printCost=self.printCost,
                                                             _gQ_t=self.proportions[1],
-                                                            _Q_t = self.stabilize_Q_init(_Q_t))
+                                                            _Q_t = self.stabilize_Q_init(
+                                                                                _Q_t, n=n, r=r, b=self.proportions[1]
+                                                                ))
             
             self.T_gammas = [T_tm1t, T_ttp1]
             self.Q_gammas[1] = Q_t
@@ -757,9 +785,13 @@ class HM_OT:
         n, m = C_factors_sequence[0][0].shape[0], C_factors_sequence[0][1].shape[1]
         
         init_args=(
-                    self.stabilize_Q_init(Qs_IC[0], n=n, r=r1),
-                   self.stabilize_Q_init(Qs_IC[1], n=m, r=r2),
-                   self.stabilize_Q_init(self.T_gammas[0], n=r1, r=r2)
+                    self.stabilize_Q_init(Qs_IC[0], n=n, r=r1,
+                                         b = self.proportions[0]),
+                   self.stabilize_Q_init(Qs_IC[1], n=m, r=r2,
+                                         b = self.proportions[1]),
+                   self.stabilize_Q_init(self.T_gammas[0], n=r1, r=r2,
+                                         a = self.proportions[0],
+                                         b = self.proportions[1])
                   )
         
         C_factors, A_factors, B_factors = C_factors_sequence[0], A_factors_sequence[0], A_factors_sequence[1]
