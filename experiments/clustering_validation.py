@@ -81,9 +81,11 @@ def evaluate_coclusters(Qs_ann, Qs_u, Ts_u, Ts_s, Ts_m,
 def get_Jaccard_Table(adata_1, adata_2, 
                       clustering1, clustering2,
                      cluster_label='cluster',
-                     n_top_genes = 50, print_DE=False, 
-                      overlap_lst=None):
-
+                     n_top_genes = 50, 
+                      print_DE=False, 
+                      overlap_lst=None,
+                     genes_to_print=None):
+    
     if overlap_lst is not None:
         
         mask1 = np.isin(clustering1, overlap_lst)
@@ -116,13 +118,12 @@ def get_Jaccard_Table(adata_1, adata_2,
                             sharey=False, title='t1 DE')
     sc.pl.rank_genes_groups(adata2, n_genes=n_top_genes,
                             sharey=False, title='t2 DE')
-    
+    '''
     top_genes1 = get_top_de_genes(adata1, 
                                  top_n=n_top_genes)
     top_genes2 = get_top_de_genes(adata2, 
                                  top_n=n_top_genes)
-
-    '''
+    
     if print_DE:
         print('Printing DE Genes for Time 1.')
         for cluster, df in top_genes1.items():
@@ -148,7 +149,7 @@ def get_Jaccard_Table(adata_1, adata_2,
             intersection = genes1 & genes2
             union = genes1 | genes2
             jaccard_matrix[i, j] = len(intersection) / len(union) if union else 0.0
-
+            
             if c1 == c2 and print_DE is True:
                 print(f"\n=== Cluster {c1} ===")
                 print(f"Intersection genes ({len(intersection)}):\n", sorted(intersection))
@@ -159,12 +160,24 @@ def get_Jaccard_Table(adata_1, adata_2,
                 # slice the two DE tables down to just those intersecting genes
                 df1_int = df1[df1['gene'].isin(intersection)].reset_index(drop=True)
                 df2_int = df2[df2['gene'].isin(intersection)].reset_index(drop=True)
-                
-                print("\nTop DE stats for time 1 (intersection):")
-                print(df1_int.to_string(index=False))
-                
-                print("\nTop DE stats for time 2 (intersection):")
-                print(df2_int.to_string(index=False))
+
+                if genes_to_print is None:
+                    print("\nTop DE stats for time 1 (intersection):")
+                    print(df1_int.to_string(index=False))
+                    print("\nTop DE stats for time 2 (intersection):")
+                    print(df2_int.to_string(index=False))
+                else:
+                    df1_sub = df1_int[df1_int['gene'].isin(genes_to_print)].reset_index(drop=True)
+                    df2_sub = df2_int[df2_int['gene'].isin(genes_to_print)].reset_index(drop=True)
+                    if not df1_sub.empty or not df2_sub.empty:
+                        if not df1_sub.empty:
+                            print(" Time 1 DE stats for selected genes:")
+                            print(df1_sub.to_string(index=False))
+                        if not df2_sub.empty:
+                            print(" Time 2 DE stats for selected genes:")
+                            print(df2_sub.to_string(index=False))
+                    else:
+                        print(f'No genes in list represented in cluster {c1}!')
     
     jaccard_df = pd.DataFrame(jaccard_matrix, index=clusters1, columns=clusters2)
     
