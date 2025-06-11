@@ -287,6 +287,7 @@ def evaluate_coclusters(Qs_ann, Qs_u, Ts_u, Ts_s, Ts_m,
     # Centroids at t1, t2 of annotated clusters
     C1 = compute_centroids(X1, Q1)
     C3 = compute_centroids(X3, Q3)
+    
     # Annotated clusters
     Q2 = Qs_ann[1]
     # Learned clusters
@@ -339,5 +340,70 @@ def evaluate_coclusters(Qs_ann, Qs_u, Ts_u, Ts_s, Ts_m,
     
     return
 
+def evaluate_coclusters(Qs_ann, Qs_u, Ts_u, Ts_s, Ts_m,
+                        X1, X2, X3):
+    
+    Q1 = Qs_ann[0]
+    Q3 = Qs_ann[2]
+    
+    # Centroids at t1, t3 of annotated clusters
+    C1 = compute_centroids(X1, Q1)
+    C3 = compute_centroids(X3, Q3)
+
+    Q1_u = Qs_u[0]
+    Q3_u = Qs_u[2]
+    
+    # Centroids at t1, t3 of inferred clusters
+    C1_u = compute_centroids(X1, Q1_u)
+    C3_u = compute_centroids(X3, Q3_u)
+    
+    # Annotated clusters
+    Q2 = Qs_ann[1]
+    # Learned clusters
+    Q2_U = Qs_u[1]
+
+    # Annotated and unsupervised centroids
+    C2 = compute_centroids(X2, Q2)
+    C2_U = compute_centroids(X2, Q2_U)
+
+    # Transition matrices
+    T12_moscot, T23_moscot = Ts_m
+    T12_s, T23_s = Ts_s
+    T12_u, T23_u = Ts_u
+
+    # Predicted centroids through the differentiation map T
+    C1_pred_moscot = np.diag(1 / np.sum(T12_moscot, axis=1)) @ T12_moscot @ C2
+    C1_pred_s = np.diag(1 / np.sum(T12_s, axis=1)) @ T12_s @ C2
+    C1_pred_u = np.diag(1 / np.sum(T12_u, axis=1)) @ T12_u @ C2_U
+    
+    sim_pre = cosine_similarity(C1, C1_pred_moscot).diagonal()
+    weighted_score = np.sum(np.sum(Q1, axis=0) * sim_pre)
+    print(f"Weighted cosine similarity moscot (t2 transferred to t1): {weighted_score:.3f}")
+    
+    sim_pre = cosine_similarity(C1, C1_pred_s).diagonal()
+    weighted_score = np.sum(np.sum(Q1, axis=0) * sim_pre)
+    print(f"Weighted cosine similarity hm-ot supervised (t2 transferred to t1): {weighted_score:.3f}")
+    
+    sim_pre = cosine_similarity(C1_u, C1_pred_u).diagonal()
+    weighted_score = np.sum(np.sum(Q1, axis=0) * sim_pre)
+    print(f"Weighted cosine similarity hm-ot unsupervised (t2 transferred to t1): {weighted_score:.3f}")
+    
+    C3_pred_moscot = np.diag(1 / np.sum(T23_moscot, axis=0)) @ T23_moscot.T @ C2
+    C3_pred_s = np.diag(1 / np.sum(T23_s, axis=0)) @ T23_s.T @ C2
+    C3_pred_u = np.diag(1 / np.sum(T23_u, axis=0)) @ T23_u.T @ C2_U
+    
+    sim_pre = cosine_similarity(C3, C3_pred_moscot).diagonal()
+    weighted_score = np.sum(np.sum(Q3, axis=0) * sim_pre)
+    print(f"Weighted cosine similarity moscot (t2 transferred to t3): {weighted_score:.3f}")
+    
+    sim_pre = cosine_similarity(C3, C3_pred_s).diagonal()
+    weighted_score = np.sum(np.sum(Q3, axis=0) * sim_pre)
+    print(f"Weighted cosine similarity hm-ot supervised (t2 transferred to t3): {weighted_score:.3f}")
+    
+    sim_pre = cosine_similarity(C3_u, C3_pred_u).diagonal()
+    weighted_score = np.sum(np.sum(Q3, axis=0) * sim_pre)
+    print(f"Weighted cosine similarity hm-ot unsupervised (t2 transferred to t3): {weighted_score:.3f}")
+    
+    return
 
 

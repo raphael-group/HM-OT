@@ -294,7 +294,9 @@ class HM_OT:
                                                                 printCost=self.printCost,
                                                                 _gQ_t=self.proportions[i],
                                                                 _T_tm1t = _T_tm1t,
-                                                                _T_ttp1 = _T_ttp1)
+                                                                _T_ttp1 = _T_ttp1,
+                                                                max_inneriters_balanced= self.max_inner_iters_B,
+                                                                max_inneriters_relaxed= self.max_inner_iters_R)
             elif Qs_IC[i] is not None:
                 Q_t = Qs_IC[i]
             else:
@@ -405,7 +407,9 @@ class HM_OT:
                                   init_args=init_args,
                                   printCost=self.printCost,
                                  _gQ=self.proportions[0],
-                                 _gR=self.proportions[1])
+                                 _gR=self.proportions[1],
+                                 max_inneriters_balanced= self.max_inner_iters_B,
+                                 max_inneriters_relaxed= self.max_inner_iters_R)
         
         self.Q_alphas.append(Q)
         self.Q_alphas.append(R)
@@ -452,7 +456,9 @@ class HM_OT:
                                       init_args=init_args,
                                       printCost=self.printCost,
                                      _gQ=self.proportions[i],
-                                     _gR=self.proportions[i+1])
+                                     _gR=self.proportions[i+1],
+                                     max_inneriters_balanced= self.max_inner_iters_B,
+                                     max_inneriters_relaxed= self.max_inner_iters_R)
             
             self.Q_alphas.append(R)
             self.T_alphas.append(T)
@@ -530,7 +536,9 @@ class HM_OT:
                                   init_args = init_args,
                                   printCost = self.printCost,
                                  _gQ = self.proportions[self.N-1],
-                                 _gR = self.proportions[self.N])
+                                 _gR = self.proportions[self.N],
+                                max_inneriters_balanced= self.max_inner_iters_B,
+                                max_inneriters_relaxed= self.max_inner_iters_R)
         
         self.Q_betas.append(R)
         self.Q_betas.append(Q)
@@ -580,7 +588,9 @@ class HM_OT:
                                       init_args=init_args,
                                       printCost=self.printCost,
                                      _gQ=self.proportions[i],
-                                     _gR=self.proportions[i+1])
+                                     _gR=self.proportions[i+1],
+                                     max_inneriters_balanced= self.max_inner_iters_B,
+                                     max_inneriters_relaxed= self.max_inner_iters_R)
             
             self.Q_betas.append(Q)
             self.T_betas.append(T)
@@ -641,7 +651,9 @@ class HM_OT:
                                        updateQ = False, 
                                        updateT = True, 
                                        init_args=init_args, 
-                                       printCost = self.printCost)
+                                       printCost = self.printCost,
+                                     max_inneriters_balanced= self.max_inner_iters_B,
+                                     max_inneriters_relaxed= self.max_inner_iters_R)
             
             self.T_gammas.append(T)
             
@@ -761,7 +773,9 @@ class HM_OT:
                                                             _gQ_t=self.proportions[1],
                                                             _Q_t = self.stabilize_Q_init(
                                                                                 _Q_t, n=n, r=r, b=self.proportions[1]
-                                                                ))
+                                                                ),
+                                                             max_inneriters_balanced= self.max_inner_iters_B,
+                                                             max_inneriters_relaxed= self.max_inner_iters_R)
             
             self.T_gammas = [T_tm1t, T_ttp1]
             self.Q_gammas[1] = Q_t
