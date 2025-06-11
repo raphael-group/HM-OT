@@ -10,7 +10,7 @@ from typing import List, Union, Dict, Tuple, Optional
 
 import scanpy as sc
 
-from .utils.clustering import max_likelihood_clustering, reference_clustering
+from .utils.clustering import max_likelihood_clustering, reference_clustering, reference_clustering_prime
 
 ################################################################################################
 #   plotting helper functions
@@ -100,6 +100,100 @@ def get_diffmap_inputs(
 #   plotting: core functions
 ################################################################################################
 
+def plot_all_sc_clusters(
+    spatial_list: List[np.ndarray],
+    clustering_list: List[np.ndarray],
+    clustering_type: str = "ml",
+    cell_type_labels: Optional[List[Optional[List[str]]]] = None,
+    cmap: str = "tab",
+    title: Optional[str] = None,
+    save_name: Optional[str] = None,
+    dotsize: float = 1.0,
+    flip: bool = False,
+    subplot_labels: Optional[List[Optional[List[str]]]] = None
+) -> None:
+    # Number of slices
+    N_slices = len(spatial_list)
+
+    # Provide a default list of cell_type_labels if none was supplied
+    if cell_type_labels is None:
+        cell_type_labels = [None] * N_slices
+
+    sns.set_style("white")
+    sns.set_context("notebook", font_scale=1.5)
+
+    # Single shared axis
+    fig, ax = plt.subplots(figsize=(20 * N_slices, 20), facecolor="white")
+
+    # Center each slice around its mean
+    slices = [S - np.mean(S, axis=0) for S in spatial_list]
+
+    # Obtain color dict from get_diffmap_inputs
+    _, _, color_dict = get_diffmap_inputs(clustering_list, clustering_type)
+
+    # Determine global x/y bounds
+    all_spatial = np.vstack(slices)
+    x_min, x_max = np.min(all_spatial[:, 0]), np.max(all_spatial[:, 0])
+    y_min, y_max = np.min(all_spatial[:, 1]), np.max(all_spatial[:, 1])
+
+    # Only used if clustering_type == 'ml'
+    cumulative_shift = 0
+
+    # Plot everything on the same axis
+    for i, (coords, labels) in enumerate(zip(slices, clustering_list)):
+        # Shift labels if 'ml' mode
+        if clustering_type == "ml":
+            shifted_labels = labels + cumulative_shift
+        else:
+            shifted_labels = labels
+
+        # Optionally flip the y-axis
+        if flip:
+            coords = coords @ np.array([[-1, 0], [0, 1]])
+
+        # Build a DataFrame for plotting
+        df = pd.DataFrame({
+            "x": coords[:, 0],
+            "y": coords[:, 1],
+            "value": shifted_labels
+        })
+
+        # Increment the label space for the next slice
+        if clustering_type == "ml":
+            cumulative_shift += len(set(labels))
+
+        # Scatter on the shared axis
+        sns.scatterplot(
+            x="x", y="y", hue="value",
+            palette=color_dict,
+            data=df, ax=ax,
+            s=dotsize, legend=False
+        )
+
+    # Final axis formatting
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    if flip:
+        ax.invert_yaxis()
+    ax.axis("off")
+    ax.set_aspect("equal", adjustable="box")
+
+    plt.tight_layout()
+    plt.subplots_adjust(wspace=.8)
+
+    # Title & save
+    if title:
+        plt.suptitle(title, fontsize=36, color="black")
+    if save_name is not None:
+        plt.savefig(
+            save_name,
+            dpi=300,
+            transparent=True,
+            bbox_inches="tight",
+            facecolor="white"
+        )
+    plt.show()
+
 def plot_clustering_list(
     spatial_list: List[np.ndarray],
     clustering_list: List[np.ndarray],
@@ -109,6 +203,7 @@ def plot_clustering_list(
     title: Optional[str] = None,
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
+    key_dotsize: float = 1.0,
     flip: bool = False,
     subplot_labels: Optional[List[Optional[List[str]]]] = None
 ) -> None:
@@ -165,13 +260,59 @@ def plot_clustering_list(
         if clustering_type == "ml":
             cumulative_shift += len(set(labels))
 
+        if cell_type_labels[i] is not None:
+            # Get the unique numeric labels in this plot
+            unique_labels = sorted(np.unique(shifted_labels))
+            
+            # Create a mapping dictionary (numeric label → cell type label)
+            label_mapping = {}
+            for j, num_label in enumerate(unique_labels):
+                if j < len(cell_type_labels[i]):
+                    label_mapping[num_label] = cell_type_labels[i][j]
+
         # Scatter plot
         sns.scatterplot(
             x="x", y="y", hue="value",
             palette=color_dict,
             data=df, ax=ax,
-            s=dotsize, legend=True
+            s=dotsize, legend='brief'
         )
+
+        # If cell_type_labels[i] is provided, override the legend labels
+        if cell_type_labels[i] is not None:
+    
+            handles, lbls = ax.get_legend_handles_labels()
+
+            for handle in handles:
+                handle.set_markersize(50*key_dotsize)  # Adjust this value to change dot size
+            
+            # Create new labels list that matches the order of handles
+            new_labels = []
+            for lbl in lbls:
+                # Convert label to numeric (from string that might be returned by legend)
+                try:
+                    num_label = int(float(lbl))
+                except:
+                    num_label = lbl
+                    
+                # Map to cell type label if possible
+                if num_label in label_mapping:
+                    new_labels.append(label_mapping[num_label])
+                else:
+                    new_labels.append(f"Cluster {lbl}")
+            
+            # Create new legend with mapped labels
+            ax.legend(
+                handles=handles, 
+                labels=new_labels,
+                loc='center left',
+                bbox_to_anchor=(1, 0.5),
+                frameon=False,
+                title="",
+                labelspacing=4 * key_dotsize,
+                fontsize=20
+            )
+
 
         # Set consistent axes limits
         ax.set_xlim(x_min, x_max)
@@ -188,11 +329,6 @@ def plot_clustering_list(
             ax.set_title(subplot_labels[i], color="black")
         else:
             ax.set_title(f"Slice {i+1}", color="black")
-
-        # If cell_type_labels[i] is provided, override the legend labels
-        if cell_type_labels[i] is not None:
-            handles, lbls = ax.get_legend_handles_labels()
-            ax.legend(handles=handles, labels=cell_type_labels[i], title="")
 
     plt.tight_layout()
     plt.subplots_adjust(wspace=0.4)  # horizontal spacing
@@ -214,6 +350,7 @@ def plot_labeled_differentiation(
     color_dict: Dict[int, Union[str, tuple]],
     cell_type_labels: Optional[List[Optional[List[str]]]] = None,
     clustering_type: str = "ml",
+    row_stochastic: bool = False,
     reference_index: Optional[int] = None,  # Not used within the function, for future
     dotsize_factor: float = 1.0,
     linethick_factor: float = 10.0,
@@ -231,6 +368,18 @@ def plot_labeled_differentiation(
 
     N_slices = len(population_list)
 
+    Ts = transition_list
+
+    row_stochastic_Ts = []
+    for T in Ts:
+        row_sums = T.sum(axis=1, keepdims=True)
+        row_sums = np.where(row_sums == 0, 1.0, row_sums)
+        row_stochastic_T = T / row_sums
+        row_stochastic_Ts.append(row_stochastic_T)
+
+    if row_stochastic == True:
+        Ts = row_stochastic_Ts
+
     # Build x-positions and y-positions for each slice’s clusters
     x_positions = []
     y_positions = []
@@ -242,7 +391,7 @@ def plot_labeled_differentiation(
     plt.figure(figsize=(stretch * 5 * (N_slices - 1), 10))
 
     # Plot each slice’s nodes and lines between consecutive slices
-    for pair_ind, T in enumerate(transition_list):
+    for pair_ind, T in enumerate(Ts):
         # Current slice
         plt.scatter(
             x_positions[pair_ind],
@@ -330,6 +479,7 @@ def diffmap_from_QT(
     Ts: List[np.ndarray],
     cell_type_labels: Optional[List[Optional[List[str]]]] = None,
     clustering_type: str = "ml",
+    row_stochastic: bool = False,
     reference_index: Optional[int] = None,
     title: Optional[str] = None,
     save_name: Optional[str] = None,
@@ -366,6 +516,7 @@ def diffmap_from_QT(
         color_dict=color_dict,
         cell_type_labels=cell_type_labels,
         clustering_type=clustering_type,
+        row_stochastic=row_stochastic,
         dotsize_factor=dsf,
         linethick_factor=linethick_factor,
         title=title,
@@ -386,6 +537,7 @@ def plot_clusters_from_QT(
     title: Optional[str] = None,
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
+    key_dotsize: float = 1.0,
     flip: bool = False,
     subplot_labels: Optional[List[Optional[List[str]]]] = None,
     full_P = True
@@ -396,12 +548,50 @@ def plot_clusters_from_QT(
     elif clustering_type == "reference":
         if reference_index is None:
             raise ValueError("Reference index is required for reference clustering.")
-        clustering_list = reference_clustering(Qs, Ts, reference_index, full_P=full_P)
+        clustering_list = reference_clustering_prime(Qs, Ts, reference_index, full_P=full_P)
     else:
         raise ValueError(f"Invalid clustering_type: '{clustering_type}'.")
 
     # Call the plotting function
     plot_clustering_list(
+        spatial_list=Ss,
+        clustering_list=clustering_list,
+        cell_type_labels=cell_type_labels,
+        clustering_type=clustering_type,
+        cmap="tab",
+        title=title,
+        save_name=save_name,
+        dotsize=dotsize,
+        key_dotsize=key_dotsize,
+        flip=flip,
+        subplot_labels=subplot_labels
+    )
+
+def plot_all_sc_from_QT(
+    Ss: List[np.ndarray],
+    Qs: List[np.ndarray],
+    Ts: List[np.ndarray],
+    cell_type_labels: Optional[List[Optional[List[str]]]] = None,
+    clustering_type: str = "ml",
+    reference_index: Optional[int] = None,
+    title: Optional[str] = None,
+    save_name: Optional[str] = None,
+    dotsize: float = 1.0,
+    flip: bool = False,
+    subplot_labels: Optional[List[Optional[List[str]]]] = None
+) -> None:
+    # Build the clustering_list
+    if clustering_type == "ml":
+        clustering_list = max_likelihood_clustering(Qs)
+    elif clustering_type == "reference":
+        if reference_index is None:
+            raise ValueError("Reference index is required for reference clustering.")
+        clustering_list = reference_clustering(Qs, Ts, reference_index)
+    else:
+        raise ValueError(f"Invalid clustering_type: '{clustering_type}'.")
+
+    # Call the single‐plot function
+    plot_all_sc_clusters(
         spatial_list=Ss,
         clustering_list=clustering_list,
         cell_type_labels=cell_type_labels,
@@ -889,8 +1079,7 @@ def diffmap_from_QT_sankey(
     # 2) Generate population_list, labels_list, color_dict
     population_list, labels_list, color_dict = get_diffmap_inputs(
         clustering_list,
-        clustering_type,
-        cmap=cmap
+        clustering_type
     )
 
     # 3) Determine which Sankey plotting function to call
@@ -1063,3 +1252,111 @@ def make_sankey(
     else:
         # Default to PNG if not specified or recognized
         fig.write_image(save_basename + '.png')
+
+def plot_diffmap_clusters(
+    X: np.ndarray,
+    time_labels: np.ndarray,
+    Qs: List[np.ndarray],
+    Ts: List[np.ndarray],
+    df: "pd.DataFrame",
+    cluster_key: str = 'cluster_pred',
+    mode: str = 'standard',
+    min_thresh: float = 1e-5,
+    max_lw: float = 8.0,
+    figsize: tuple[int,int] = (16,16),
+    ):
+    """
+    Scatter-plots each point in X colored by its inferred cluster,
+    then overlays arrows between cluster-barycenters according to Ts.
+
+    Parameters
+    ----------
+    X            : (N,2) array of all points across all timepoints
+    time_labels  : length-N int array, giving timepoint for each row of X
+    Qs           : list of length T factor matrices, Qs[t].shape = (n_t, k_t)
+    Ts           : list of length T–1 transition matrices, Ts[t].shape = (k_t, k_{t+1})
+    df           : DataFrame with columns "x","y","timepoint"
+    get_palette_fn : function(labels_list, tag) returning (_, lab_list, color_dict)
+    cluster_key  : column name to store the flattened cluster IDs
+    mode         : passed to max_likelihood_clustering
+    min_thresh   : arrows with weight ≤ this are dropped
+    max_lw       : maximum line‐width for the thickest arrow
+    figsize      : figure size
+
+    Returns
+    -------
+    fig, ax      : the Matplotlib figure and axes
+    """
+    # 1) infer per‐timepoint labels
+    labels_list = max_likelihood_clustering(Qs, mode=mode)
+    labels_list = [np.asarray(lbl) for lbl in labels_list]
+
+    # 2) offset & flatten so that clusters at different t don't collide
+    offset = 0
+    labels_offset = []
+    for lbl in labels_list:
+        labels_offset.append(lbl + offset)
+        offset += lbl.max() + 1
+    labels_flat = np.concatenate(labels_offset)
+    
+    # 3) attach to df
+    df[cluster_key] = labels_flat
+    
+    # 4) build color mapping for seaborn
+    _, lab_list, color_dict = get_diffmap_inputs(labels_list, 'ml')
+    
+    # 5) base scatter
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.scatterplot(
+        data=df,
+        x="x", y="y",
+        hue=cluster_key,
+        palette=color_dict,
+        s=60, linewidth=0.3, edgecolor="k",
+        ax=ax
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel(r"$x$")
+    ax.set_ylabel(r"$y$")
+    ax.legend(title=cluster_key, bbox_to_anchor=(1.02, 1), loc="upper left")
+    sns.despine()
+    plt.tight_layout()
+
+    # 6) overlay arrows for each t → t+1
+    for t, T in enumerate(Ts):
+        # slice point‐clouds
+        X_t   = X[time_labels == t]
+        X_tp1 = X[time_labels == t+1]
+
+        Q_src = Qs[t]
+        Q_tgt = Qs[t+1]
+
+        # barycenters: (k_t × 2), (k_{t+1} × 2)
+        sums_src = Q_src.sum(axis=0)[:,None]
+        sums_tgt = Q_tgt.sum(axis=0)[:,None]
+        bary_src = (Q_src.T @ X_t)   / sums_src
+        bary_tgt = (Q_tgt.T @ X_tp1) / sums_tgt
+
+        norm = T.max() if T.max()>0 else 1.0
+        src_ids = np.unique(labels_list[t])
+        tgt_ids = np.unique(labels_list[t+1])
+
+        for i, src in enumerate(src_ids):
+            for j, tgt in enumerate(tgt_ids):
+                w = T[i, j]
+                if w <= min_thresh:
+                    continue
+                start = bary_src[i]
+                end   = bary_tgt[j]
+                ax.annotate(
+                    "",
+                    xy=end, xytext=start,
+                    arrowprops=dict(
+                        arrowstyle="->",
+                        lw=(w/norm)*max_lw,
+                        alpha=0.7,
+                        color="gray",
+                    )
+                )
+
+    return fig, ax
