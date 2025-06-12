@@ -279,12 +279,17 @@ def plot_clustering_list(
         )
 
         # If cell_type_labels[i] is provided, override the legend labels
+        handles, lbls = ax.get_legend_handles_labels()
+
+        for handle in handles:
+            handle.set_markersize(50*key_dotsize)
+
         if cell_type_labels[i] is not None:
     
-            handles, lbls = ax.get_legend_handles_labels()
+            # handles, lbls = ax.get_legend_handles_labels()
 
-            for handle in handles:
-                handle.set_markersize(50*key_dotsize)  # Adjust this value to change dot size
+            # for handle in handles:
+            #     handle.set_markersize(50*key_dotsize)  # Adjust this value to change dot size
             
             # Create new labels list that matches the order of handles
             new_labels = []
@@ -312,7 +317,17 @@ def plot_clustering_list(
                 labelspacing=4 * key_dotsize,
                 fontsize=20
             )
-
+        else:
+            # Use original labels but still apply the styling
+            ax.legend(
+                handles=handles,
+                labels=lbls,
+                loc='center left', 
+                bbox_to_anchor=(1, 0.5),
+                frameon=False, 
+                title='',
+                labelspacing=4*key_dotsize, 
+                fontsize=20)
 
         # Set consistent axes limits
         ax.set_xlim(x_min, x_max)
