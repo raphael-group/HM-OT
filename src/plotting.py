@@ -312,6 +312,12 @@ def plot_clustering_list(
                 labelspacing=4 * key_dotsize,
                 fontsize=20
             )
+        else:
+            ax.legend(handles=handles,
+                    labels=lbls,
+                    loc='center left', bbox_to_anchor=(1, 0.5),
+                    frameon=False, title='',
+                    labelspacing=4*key_dotsize, fontsize=20)
 
 
         # Set consistent axes limits
@@ -1359,4 +1365,120 @@ def plot_diffmap_clusters(
                     )
                 )
 
+    return fig, ax
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import List, Dict, Optional
+
+
+def _centres_to_array(centres_t: Dict[int, np.ndarray],
+                      local_ids: np.ndarray) -> np.ndarray:
+    """
+    Convert ``{global_id: (x,y), …}`` to a (k × 2) array whose rows are in the
+    same order as ``local_ids`` (which are 0,1,2,… from max_likelihood_clustering).
+    Assumes the local ordering corresponds to the *sorted* global IDs.
+    """
+    global_keys_sorted = sorted(centres_t.keys())          # e.g. [3,4,5,6,7,8]
+    return np.vstack([centres_t[global_keys_sorted[i]]
+                      for i in local_ids])
+
+
+def plot_diffmap_clusters_prime(
+    X: np.ndarray,
+    time_labels: np.ndarray,
+    Qs: List[np.ndarray],
+    Ts: List[np.ndarray],
+    df: "pd.DataFrame",
+    cluster_key: str = "cluster_pred",
+    mode: str = "standard",
+    min_thresh: float = 1e-5,
+    max_lw: float = 8.0,
+    figsize: tuple[int, int] = (16, 16),
+    centres: Optional[Dict[int, Dict[int, np.ndarray]]] = None,
+):
+    """
+    Scatter-plot each point coloured by its inferred cluster, then overlay
+    arrows between cluster barycentres.
+
+    If ``centres`` is provided it must be of the form
+        {t: {global_cluster_ID: np.array([x, y]), …}, …}.
+    """
+
+    # 1) infer per-time-point hard labels
+    labels_list = max_likelihood_clustering(Qs, mode=mode)
+    labels_list = [np.asarray(lbl) for lbl in labels_list]
+
+    # 2) make cluster IDs unique across time by adding a running offset
+    offset = 0
+    labels_offset = []
+    for lbl in labels_list:
+        labels_offset.append(lbl + offset)
+        offset += lbl.max() + 1
+    labels_flat = np.concatenate(labels_offset)
+
+    # 3) stash into the DataFrame
+    df[cluster_key] = labels_flat
+
+    # 4) colour palette
+    _, lab_list, color_dict = get_diffmap_inputs(labels_list, "ml")
+
+    # 5) base scatter-plot
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.scatterplot(
+        data=df,
+        x="x",
+        y="y",
+        hue=cluster_key,
+        palette=color_dict,
+        s=60,
+        linewidth=0.3,
+        edgecolor="k",
+        alpha=.5,
+        ax=ax,
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel(r"$x$")
+    ax.set_ylabel(r"$y$")
+    ax.legend(title=cluster_key, bbox_to_anchor=(1.02, 1), loc="upper left")
+    sns.despine()
+    plt.tight_layout()
+
+    # 6) overlay arrows  t → t+1
+    for t, T in enumerate(Ts):
+        src_ids = np.unique(labels_list[t])        # local IDs 0,1,…
+        tgt_ids = np.unique(labels_list[t + 1])    # local IDs 0,1,…
+
+        if centres is not None:
+            bary_src = _centres_to_array(centres[t],     src_ids)
+            bary_tgt = _centres_to_array(centres[t + 1], tgt_ids)
+        else:
+            # barycentres from the soft assignment matrices Qs
+            X_t,     X_tp1  = X[time_labels == t],   X[time_labels == t + 1]
+            Q_src,   Q_tgt  = Qs[t],                 Qs[t + 1]
+            sums_src        = Q_src.sum(axis=0)[:, None]
+            sums_tgt        = Q_tgt.sum(axis=0)[:, None]
+            bary_src        = (Q_src.T @ X_t)   / sums_src
+            bary_tgt        = (Q_tgt.T @ X_tp1) / sums_tgt
+
+        norm = T.max() if T.max() > 0 else 1.0
+
+        for i in range(len(src_ids)):
+            for j in range(len(tgt_ids)):
+                w = T[i, j]
+                if w <= min_thresh:
+                    continue
+                ax.annotate(
+                    "",
+                    xy=bary_tgt[j],
+                    xytext=bary_src[i],
+                    arrowprops=dict(
+                        arrowstyle="-|>",
+                        lw=(w / norm) * max_lw,
+                        alpha=0.7,
+                        color="black",
+                    ),
+                )
     return fig, ax
