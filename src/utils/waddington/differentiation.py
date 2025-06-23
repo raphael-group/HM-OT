@@ -27,7 +27,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 from anndata import AnnData
-from utils.waddington.minima import classify_minima_by_ring
+from utils.waddington.minima import assign_cell_types
 
 try:
     import torch
@@ -62,34 +62,7 @@ def _canonical_labels(classified_minima):
         labels.append(f"{letter}{angle}")
     return labels
 
-# -----------------------------------------------------------------------------
-# 1) Cell-type assignment ------------------------------------------------------
-# -----------------------------------------------------------------------------
 
-def assign_cell_types(
-    positions: np.ndarray,  # shape (N, 2)
-    minima_points: Sequence[Tuple[float, float]],
-    *,
-    assignment_radius: float = 1.4,
-) -> Tuple[np.ndarray, List[Tuple[float, float, str]]]:
-    """Nearest-minimum assignment with an *unassigned* fallback (−1)."""
-
-    n = positions.shape[0]
-    cell_types = np.full(n, -1, dtype=int)
-    classified_minima = classify_minima_by_ring(minima_points)
-
-    for p_idx, (x, y) in enumerate(positions):
-        best_idx: int | None = None
-        best_dist = assignment_radius
-        for m_idx, (mx, my, _) in enumerate(classified_minima):
-            d = np.hypot(x - mx, y - my)
-            if d < best_dist:
-                best_dist = d
-                best_idx = m_idx
-        if best_idx is not None:
-            cell_types[p_idx] = best_idx
-
-    return cell_types, classified_minima
 
 # -----------------------------------------------------------------------------
 # 2) Differentiation map -------------------------------------------------------
@@ -192,63 +165,5 @@ def save_differentiation_data(
     print("Saved differentiation data →", out_dir)
     return paths
 
-# -----------------------------------------------------------------------------
-# 5) Q-matrices & OT preparation ----------------------------------------------
-# -----------------------------------------------------------------------------
-
-def generate_Q_matrices_from_clusters(
-    snapshots: dict[str, np.ndarray],
-    minima_points: list[tuple[float, float]],
-    assignment_radius: float,
-    *,
-    device: str = "cpu",
-) -> tuple[list[np.ndarray], dict[str, np.ndarray]]:
-    """Return a Q matrix per snapshot; last column is *U* (unassigned)."""
-    minima = np.asarray(minima_points)
-    n_min = minima.shape[0]
-    n_types = n_min + 1
-
-    Qs: list[np.ndarray] = []
-    assigns: dict[str, np.ndarray] = {}
-
-    for key in sorted(snapshots):
-        X = snapshots[key]
-        N = X.shape[0]
-        dists = np.linalg.norm(X[:, None, :] - minima[None, :, :], axis=2)
-        nearest = np.argmin(dists, axis=1)
-        within = dists <= assignment_radius
-
-        Q = np.zeros((N, n_types), dtype=float)
-        lab = np.full(N, -1, dtype=int)
-        for i in range(N):
-            if within[i, nearest[i]]:
-                Q[i, nearest[i]] = 1.0
-                lab[i] = nearest[i]
-            else:
-                Q[i, n_min] = 1.0
-        Qs.append(Q)
-        assigns[key] = lab
-    return Qs, assigns
 
 
-def setup_point_clouds_for_waddington_ot(
-    pc1: np.ndarray,
-    pc2: np.ndarray,
-    *,
-    time_1: int = 0,
-    time_2: int = 1,
-    ct_labels_1: np.ndarray | None = None,
-    ct_labels_2: np.ndarray | None = None,
-) -> AnnData:
-    """Combine two point clouds into an AnnData suitable for OT pipelines."""
-    X = np.vstack([pc1, pc2])
-    t_lbls = np.concatenate([np.full(pc1.shape[0], time_1), np.full(pc2.shape[0], time_2)])
-    ids = np.arange(X.shape[0])
-    adata = AnnData(X=X)
-    adata.obs["time_point"] = t_lbls
-    adata.obs["cell_id"] = ids
-    adata.obs_names = [f"cell_{i}" for i in range(X.shape[0])]
-    adata.var_names = ["dim_1", "dim_2"]
-    if ct_labels_1 is not None and ct_labels_2 is not None:
-        adata.obs["celltype"] = np.concatenate([ct_labels_1, ct_labels_2])
-    return adata

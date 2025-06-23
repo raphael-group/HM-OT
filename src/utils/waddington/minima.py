@@ -16,13 +16,14 @@ Public helpers
 * ``mark_minima_regions`` – boolean masks for colouring.
 """
 from __future__ import annotations
-
 from typing import Dict, Iterable, List, Tuple
 import string
 
 import numpy as np
 from scipy.ndimage import minimum_filter
 from scipy.optimize import minimize
+from typing import Dict, List, Sequence, Tuple
+from anndata import AnnData
 
 from utils.waddington.landscape_core import (
     V_total,
@@ -197,3 +198,95 @@ def mark_minima_regions(X, Y, classified_minima, ball_radius: float = 1.4):
         elif ring == "C":
             c_mask |= mask
     return a_mask, b_mask, c_mask
+
+# -----------------------------------------------------------------------------
+# 4) Cell-type assignment ------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+def assign_cell_types(
+    positions: np.ndarray,  # shape (N, 2)
+    minima_points: Sequence[Tuple[float, float]],
+    *,
+    assignment_radius: float = 1.4,
+) -> Tuple[np.ndarray, List[Tuple[float, float, str]]]:
+    """Nearest-minimum assignment with an *unassigned* fallback (−1)."""
+
+    n = positions.shape[0]
+    cell_types = np.full(n, -1, dtype=int)
+    classified_minima = classify_minima_by_ring(minima_points)
+
+    for p_idx, (x, y) in enumerate(positions):
+        best_idx: int | None = None
+        best_dist = assignment_radius
+        for m_idx, (mx, my, _) in enumerate(classified_minima):
+            d = np.hypot(x - mx, y - my)
+            if d < best_dist:
+                best_dist = d
+                best_idx = m_idx
+        if best_idx is not None:
+            cell_types[p_idx] = best_idx
+
+    return cell_types, classified_minima
+
+# -----------------------------------------------------------------------------
+# 5) Q-matrices & OT preparation ----------------------------------------------
+# -----------------------------------------------------------------------------
+
+
+def build_Q(data, minima_points, assignment_radius):
+    minima  = np.asarray(minima_points)  
+    n_min   = minima.shape[0]
+    n_types = n_min + 1      
+
+    X = data   
+    N = X.shape[0]
+    dists = np.linalg.norm(
+        X[:, None, :] - minima[None, :, :],
+        axis=2
+    )
+    nearest = np.argmin(dists, axis=1)             # (N,)
+    inside  = dists[np.arange(N), nearest] <= assignment_radius  # (N,) bool
+    Q = np.zeros((N, n_types), dtype=float)
+    Q[:, 0] = 1.0                                   # default: unassigned
+
+    idx = np.where(inside)[0]                      # rows that get a label
+    cols = nearest[idx] + 1                        # shift by +1 (col 1..)
+    Q[idx, 0] = 0.0                                # clear U for assigned
+    Q[idx, cols] = 1.0                             # set proper minima col
+
+    return Q
+
+def build_Qs(Ss, minima_points, assignment_radius):
+    Qs = []
+    for data in Ss:
+        Q = build_Q(data, minima_points, assignment_radius)
+        Qs.append(Q)
+    return Qs
+
+
+# -----------------------------------------------------------------------------
+# 6) misc. loading for W-OT / moscot ------------------------------------------
+# -----------------------------------------------------------------------------
+
+
+def setup_point_clouds_for_waddington_ot(
+    pc1: np.ndarray,
+    pc2: np.ndarray,
+    *,
+    time_1: int = 0,
+    time_2: int = 1,
+    ct_labels_1: np.ndarray | None = None,
+    ct_labels_2: np.ndarray | None = None,
+) -> AnnData:
+    """Combine two point clouds into an AnnData suitable for OT pipelines."""
+    X = np.vstack([pc1, pc2])
+    t_lbls = np.concatenate([np.full(pc1.shape[0], time_1), np.full(pc2.shape[0], time_2)])
+    ids = np.arange(X.shape[0])
+    adata = AnnData(X=X)
+    adata.obs["time_point"] = t_lbls
+    adata.obs["cell_id"] = ids
+    adata.obs_names = [f"cell_{i}" for i in range(X.shape[0])]
+    adata.var_names = ["dim_1", "dim_2"]
+    if ct_labels_1 is not None and ct_labels_2 is not None:
+        adata.obs["celltype"] = np.concatenate([ct_labels_1, ct_labels_2])
+    return adata
