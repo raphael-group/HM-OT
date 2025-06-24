@@ -8,6 +8,7 @@ import matplotlib.patheffects as path_effects
 import re
 from typing import List, Union, Dict, Tuple, Optional
 
+
 import scanpy as sc
 
 from .utils.clustering import max_likelihood_clustering, reference_clustering, reference_clustering_prime
@@ -358,15 +359,22 @@ def plot_clustering_list(
     plt.show()
 
 
+
 def plot_labeled_differentiation(
     population_list: List[List[int]],
     transition_list: List[np.ndarray],
     label_list: List[List[int]],
     color_dict: Dict[int, Union[str, tuple]],
+    # --- NEW degenerate controls ------------------------------------------------
+    deg_threshold: float = 0.0,          # ≤ this ⇒ treat as degenerate
+    deg_size: float = 20.0,              # points² used when size would vanish
+    deg_marker_lw: float = 2.5,          # X linewidth
+    deg_marker_color: str = "k",         # X colour
+    # ---------------------------------------------------------------------------
     cell_type_labels: Optional[List[Optional[List[str]]]] = None,
     clustering_type: str = "ml",
     row_stochastic: bool = False,
-    reference_index: Optional[int] = None,  # Not used within the function, for future
+    reference_index: Optional[int] = None,   # reserved for future
     dotsize_factor: float = 1.0,
     linethick_factor: float = 10.0,
     save_name: Optional[str] = None,
@@ -375,113 +383,150 @@ def plot_labeled_differentiation(
     outline: float = 3.0,
     fontsize: int = 12
 ) -> None:
-    # Set seaborn style
+    """Visualise a differentiation map with degenerate clusters highlighted."""
+    # ---------------------------------------------------------------------
+    # 0. style and helpers
+    # ---------------------------------------------------------------------
     sns.set(style="white")
-
-    dsf = dotsize_factor
-    ltf = linethick_factor
-
     N_slices = len(population_list)
-
     Ts = transition_list
 
-    row_stochastic_Ts = []
-    for T in Ts:
-        row_sums = T.sum(axis=1, keepdims=True)
-        row_sums = np.where(row_sums == 0, 1.0, row_sums)
-        row_stochastic_T = T / row_sums
-        row_stochastic_Ts.append(row_stochastic_T)
+    # row-stochastic option
+    if row_stochastic:
+        Ts = [T / np.where(T.sum(1, keepdims=True) == 0, 1, T.sum(1, keepdims=True))
+              for T in Ts]
 
-    if row_stochastic == True:
-        Ts = row_stochastic_Ts
+    # x/y coordinates for nodes
+    x_positions = [np.full(len(pop), i) for i, pop in enumerate(population_list)]
+    y_positions = [np.arange(len(pop))  for pop in population_list]
 
-    # Build x-positions and y-positions for each slice’s clusters
-    x_positions = []
-    y_positions = []
-    for i, population in enumerate(population_list):
-        y_positions.append(np.arange(len(population)))
-        x_positions.append(np.ones(len(population)) * i)
-    
-    # Configure figure size
+    # figure
     plt.figure(figsize=(stretch * 5 * (N_slices - 1), 10))
 
-    # Plot each slice’s nodes and lines between consecutive slices
+    # ---------------------------------------------------------------------
+    # 1. scatter nodes (with X overlays) & lines
+    # ---------------------------------------------------------------------
     for pair_ind, T in enumerate(Ts):
-        # Current slice
+        # --- CURRENT slice ------------------------------------------------
+        pops_cur = np.asarray(population_list[pair_ind])
+        deg_cur  = pops_cur <= deg_threshold
+        sizes_cur = np.where(deg_cur, deg_size, dotsize_factor * pops_cur)
+
         plt.scatter(
             x_positions[pair_ind],
             y_positions[pair_ind],
             c=[color_dict[label] for label in label_list[pair_ind]],
-            s=dsf * np.array(population_list[pair_ind]),
+            s=sizes_cur,
             edgecolor="b",
             linewidth=1,
             zorder=1,
         )
-        # Next slice
+        if deg_cur.any():
+            plt.scatter(
+                x_positions[pair_ind][deg_cur],
+                y_positions[pair_ind][deg_cur],
+                marker="x",
+                s=sizes_cur[deg_cur] * 1.4,    # make the X a bit bigger
+                linewidths=deg_marker_lw,
+                c=deg_marker_color,
+                zorder=2,
+            )
+
+        # --- NEXT slice ---------------------------------------------------
+        pops_next = np.asarray(population_list[pair_ind + 1])
+        deg_next  = pops_next <= deg_threshold
+        sizes_next = np.where(deg_next, deg_size, dotsize_factor * pops_next)
+
         plt.scatter(
             x_positions[pair_ind + 1],
             y_positions[pair_ind + 1],
             c=[color_dict[label] for label in label_list[pair_ind + 1]],
-            s=dsf * np.array(population_list[pair_ind + 1]),
+            s=sizes_next,
             edgecolor="b",
             linewidth=1,
             zorder=1,
         )
+        if deg_next.any():
+            plt.scatter(
+                x_positions[pair_ind + 1][deg_next],
+                y_positions[pair_ind + 1][deg_next],
+                marker="x",
+                s=sizes_next[deg_next] * 1.4,
+                linewidths=deg_marker_lw,
+                c=deg_marker_color,
+                zorder=2,
+            )
 
-        r1, r2 = T.shape[0], T.shape[1]
-        
-        # Draw lines only for 'ml' (plus T[i, j] > 0)
-        if clustering_type == "ml":
+        # --- arrows/edges -------------------------------------------------
+        '''if clustering_type == "ml":
+            r1, r2 = T.shape
             for i_row in range(r1):
                 for j_col in range(r2):
                     if T[i_row, j_col] > 0.0:
                         plt.plot(
-                            [x_positions[pair_ind][i_row], x_positions[pair_ind + 1][j_col]],
-                            [y_positions[pair_ind][i_row], y_positions[pair_ind + 1][j_col]],
+                            [x_positions[pair_ind][i_row],
+                             x_positions[pair_ind + 1][j_col]],
+                            [y_positions[pair_ind][i_row],
+                             y_positions[pair_ind + 1][j_col]],
                             "k-",
-                            lw=T[i_row, j_col] * ltf,
+                            lw=T[i_row, j_col] * linethick_factor,
+                            zorder=0,
+                        )'''
+        # --- arrows/edges -------------------------------------------------
+        if clustering_type == "ml":
+            # clip r1 and r2 so we never index past the plotted nodes
+            r1 = min(T.shape[0], len(x_positions[pair_ind]))
+            r2 = min(T.shape[1], len(x_positions[pair_ind + 1]))
+
+            for i_row in range(r1):
+                for j_col in range(r2):
+                    if T[i_row, j_col] > 0.0:
+                        plt.plot(
+                            [x_positions[pair_ind][i_row],
+                            x_positions[pair_ind + 1][j_col]],
+                            [y_positions[pair_ind][i_row],
+                            y_positions[pair_ind + 1][j_col]],
+                            "k-",
+                            lw=T[i_row, j_col] * linethick_factor,
                             zorder=0,
                         )
-        else:
-            # 'reference' or other type: skip line plotting
-            pass
 
-    # Optionally add text labels for each node (cluster)
+    # ---------------------------------------------------------------------
+    # 2. optional text labels
+    # ---------------------------------------------------------------------
     if cell_type_labels is not None:
         for i in range(N_slices):
             if cell_type_labels[i] is not None:
-                for j, label_text in enumerate(cell_type_labels[i]):
+                for j, lbl in enumerate(cell_type_labels[i]):
                     txt = plt.text(
                         x_positions[i][j],
                         y_positions[i][j],
-                        label_text,
+                        lbl,
                         fontsize=fontsize,
                         ha="right",
                         va="bottom",
                     )
-                    # Add a white outline behind text for contrast
                     txt.set_path_effects([
                         path_effects.Stroke(linewidth=outline, foreground="white"),
                         path_effects.Normal()
                     ])
 
-    # Title settings
+    # ---------------------------------------------------------------------
+    # 3. cosmetics
+    # ---------------------------------------------------------------------
     if title:
         plt.suptitle(title, fontsize=36, color="black")
     else:
         plt.title("Differentiation Map")
 
-    # Remove tick marks and spines
     plt.yticks([])
     plt.xticks([])
     plt.axis("off")
     sns.despine()
 
-    # Optional: save figure
-    if save_name is not None:
+    if save_name:
         plt.savefig(save_name, dpi=300, transparent=True,
                     bbox_inches="tight", facecolor="white")
-    
     plt.rcParams['figure.dpi'] = 300
     plt.show()
 
@@ -518,9 +563,10 @@ def diffmap_from_QT(
     for i in range(len(clustering_list)):
         list_size = len(np.unique(clustering_list[i]))
         rank = Qs[i].shape[1]
+        '''
         if list_size != rank:
             raise ValueError(f"Degenerate clusters, rank '{rank}' not equal to number of clusters '{list_size}'.")
-    
+    '''
     population_list, labels_list, color_dict = get_diffmap_inputs(clustering_list, clustering_type)
 
     # 3) Plot the differentiation map
