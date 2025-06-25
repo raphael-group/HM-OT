@@ -19,12 +19,12 @@ from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from utils.waddington.minima import (
+from src.utils.waddington.minima import (
     label_minima,
     classify_minima_by_ring,
     mark_minima_regions
 )
-from utils.waddington.landscape_core import V_total
+from src.utils.waddington.landscape_core import V_total
 
 
 __all__: list[str] = ["build_coloured_surface", "axis_lines"]

@@ -21,7 +21,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from utils.waddington.landscape_core import V_total, grad_V_total
+from src.utils.waddington.landscape_core import V_total, grad_V_total
 
 __all__: list[str] = [
     "simulate_langevin_with_snapshots",

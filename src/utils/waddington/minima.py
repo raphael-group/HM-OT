@@ -25,7 +25,7 @@ from scipy.optimize import minimize
 from typing import Dict, List, Sequence, Tuple
 from anndata import AnnData
 
-from utils.waddington.landscape_core import (
+from src.utils.waddington.landscape_core import (
     V_total,
     grad_V_total,
     T1_positions,

@@ -3,14 +3,14 @@ from __future__ import annotations
 import napari
 import numpy as np
 
-from utils.waddington.visual import build_coloured_surface, axis_lines
-from utils.waddington.minima import find_local_minima
-from utils.waddington.simulation import (
+from src.utils.waddington.visual import build_coloured_surface, axis_lines
+from src.utils.waddington.minima import find_local_minima
+from src.utils.waddington.simulation import (
     simulate_langevin_with_snapshots,
     build_tracks,
     save_simulation_data,
 )
-from utils.waddington.differentiation import (
+from src.utils.waddington.differentiation import (
     build_differentiation_map,
     save_differentiation_data,
 )

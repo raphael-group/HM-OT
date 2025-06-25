@@ -38,7 +38,7 @@ except ImportError:
 # -----------------------------------------------------------------------------
 #  Re-export most used landscape API -------------------------------------------
 # -----------------------------------------------------------------------------
-from utils.waddington.landscape_core import V_total, grad_V_total  # noqa: E402
+from src.utils.waddington.landscape_core import V_total, grad_V_total  # noqa: E402
 
 __all__ = [
     "V_total",

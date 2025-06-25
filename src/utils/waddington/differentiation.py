@@ -27,7 +27,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 from anndata import AnnData
-from utils.waddington.minima import assign_cell_types
+from src.utils.waddington.minima import assign_cell_types
 
 try:
     import torch
