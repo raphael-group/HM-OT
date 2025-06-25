@@ -407,6 +407,50 @@ def plot_labeled_differentiation(
     # 1. scatter nodes (with X overlays) & lines
     # ---------------------------------------------------------------------
     for pair_ind, T in enumerate(Ts):
+        # ─── compress CURRENT slice ──────────────────────────────────────────
+        pops_cur   = np.asarray(population_list[pair_ind])
+        keep_cur   = pops_cur > deg_threshold          # bool mask
+        x_cur      = x_positions[pair_ind][keep_cur]
+        y_cur      = np.arange(keep_cur.sum())         # new y’s 0…k-1
+        lbl_cur    = np.array(label_list[pair_ind])[keep_cur]
+
+        # scatter kept nodes
+        sizes_cur  = dotsize_factor * pops_cur[keep_cur]
+        plt.scatter(x_cur, y_cur,
+                    c=[color_dict[l] for l in lbl_cur],
+                    s=sizes_cur,
+                    edgecolor="b", linewidth=1, zorder=1)
+
+        # mapping row index in T  →  y-index
+        row2y = {r: y_cur[i] for i, r in enumerate(np.where(keep_cur)[0])}
+
+        # ─── compress NEXT slice ─────────────────────────────────────────────
+        pops_nxt  = np.asarray(population_list[pair_ind+1])
+        keep_nxt  = pops_nxt > deg_threshold
+        x_nxt     = x_positions[pair_ind+1][keep_nxt]
+        y_nxt     = np.arange(keep_nxt.sum())
+        lbl_nxt   = np.array(label_list[pair_ind+1])[keep_nxt]
+
+        plt.scatter(x_nxt, y_nxt,
+                    c=[color_dict[l] for l in lbl_nxt],
+                    s=dotsize_factor * pops_nxt[keep_nxt],
+                    edgecolor="b", linewidth=1, zorder=1)
+
+        col2y = {c: y_nxt[j] for j, c in enumerate(np.where(keep_nxt)[0])}
+
+        # ─── plot arrows only when both ends survived ────────────────────────
+        if clustering_type == "ml":
+            r1, r2 = T.shape
+            for i in range(r1):
+                if i not in row2y:
+                    continue
+                for j in range(r2):
+                    if j not in col2y or T[i, j] == 0.0:
+                        continue
+                    plt.plot([x_cur[0], x_nxt[0]],
+                            [row2y[i], col2y[j]],
+                            "k-", lw=T[i, j] * linethick_factor, zorder=0)
+        ''' for pair_ind, T in enumerate(Ts):
         # --- CURRENT slice ------------------------------------------------
         pops_cur = np.asarray(population_list[pair_ind])
         deg_cur  = pops_cur <= deg_threshold
@@ -455,41 +499,28 @@ def plot_labeled_differentiation(
                 linewidths=deg_marker_lw,
                 c=deg_marker_color,
                 zorder=2,
-            )
+            )'''
 
-        # --- arrows/edges -------------------------------------------------
-        '''if clustering_type == "ml":
-            r1, r2 = T.shape
-            for i_row in range(r1):
-                for j_col in range(r2):
-                    if T[i_row, j_col] > 0.0:
-                        plt.plot(
-                            [x_positions[pair_ind][i_row],
-                             x_positions[pair_ind + 1][j_col]],
-                            [y_positions[pair_ind][i_row],
-                             y_positions[pair_ind + 1][j_col]],
-                            "k-",
-                            lw=T[i_row, j_col] * linethick_factor,
-                            zorder=0,
-                        )'''
-        # --- arrows/edges -------------------------------------------------
+        # --- arrows / edges -------------------------------------------------
         if clustering_type == "ml":
-            # clip r1 and r2 so we never index past the plotted nodes
-            r1 = min(T.shape[0], len(x_positions[pair_ind]))
-            r2 = min(T.shape[1], len(x_positions[pair_ind + 1]))
+            # only iterate over rows / cols that have a visible node
+            r1 = min(T.shape[0], len(y_positions[pair_ind]))        # current slice
+            r2 = min(T.shape[1], len(y_positions[pair_ind + 1]))    # next slice
 
             for i_row in range(r1):
                 for j_col in range(r2):
-                    if T[i_row, j_col] > 0.0:
-                        plt.plot(
-                            [x_positions[pair_ind][i_row],
-                            x_positions[pair_ind + 1][j_col]],
-                            [y_positions[pair_ind][i_row],
-                            y_positions[pair_ind + 1][j_col]],
-                            "k-",
-                            lw=T[i_row, j_col] * linethick_factor,
-                            zorder=0,
-                        )
+                    if T[i_row, j_col] == 0.0:
+                        continue
+                    plt.plot(
+                        [x_positions[pair_ind][i_row],
+                        x_positions[pair_ind + 1][j_col]],
+                        [y_positions[pair_ind][i_row],
+                        y_positions[pair_ind + 1][j_col]],
+                        "k-",
+                        lw=T[i_row, j_col] * linethick_factor,
+                        zorder=0,
+                    )
+
 
     # ---------------------------------------------------------------------
     # 2. optional text labels
@@ -568,6 +599,14 @@ def diffmap_from_QT(
             raise ValueError(f"Degenerate clusters, rank '{rank}' not equal to number of clusters '{list_size}'.")
     '''
     population_list, labels_list, color_dict = get_diffmap_inputs(clustering_list, clustering_type)
+
+    global_labels = list(dict.fromkeys(lab for labs in labels_list for lab in labs))
+
+    for s in range(len(labels_list)):
+        have = labels_list[s]                # already ascending
+        miss = [lab for lab in global_labels if lab not in have]
+        labels_list[s]      = have + miss    # pad but keep existing order intact
+        population_list[s] += [0]*len(miss)
 
     # 3) Plot the differentiation map
     plot_labeled_differentiation(
