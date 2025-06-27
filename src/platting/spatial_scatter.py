@@ -122,9 +122,11 @@ def plot_clustering_list(
     color_dict: Optional[dict] = None,
     global_Qs: bool = False,
 ) -> None:
-    """One subplot *per* slice with consistent colour scheme."""
+    """One subplot *per* slice with consistent color scheme."""
     n_slices = len(spatial_list)
-    cell_type_labels = cell_type_labels or [None] * n_slices
+    if cell_type_labels is None:
+        cell_type_labels = [None] * n_slices
+    # cell_type_labels = cell_type_labels or [None] * n_slices
 
     sns.set_style("white")
     sns.set_context("notebook", font_scale=1.5)

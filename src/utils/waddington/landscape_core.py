@@ -19,12 +19,12 @@ import numpy as np
 # -----------------------------------------------------------------------------
 #  ─── Global shape constants ──────────────────────────────────────────────────
 # -----------------------------------------------------------------------------
-HEIGHT_SCALE = 0.75  # global gain factor on the entire landscape
+HEIGHT_SCALE = 1.0  # global gain factor on the entire landscape
 
 # Peak (zygote) parameters
 peak_height: float = 8.0
 peak_center: Tuple[float, float] = (0.0, 0.0)
-peak_width: float = 3.0
+peak_width: float = 2.6
 
 # First ring (T1) wells – equilateral triangle
 T1_radius: float = 2.4
@@ -55,8 +55,8 @@ for x_t2, y_t2 in T2_positions:
     T3_positions.append((T3_radius * math.cos(theta), T3_radius * math.sin(theta)))
 
 # Well depths (more differentiated ⇒ deeper)
-T1_well_depth: float = 2.8
-T2_well_depth: float = 3.2
+T1_well_depth: float = 3.0
+T2_well_depth: float = 2.8
 T3_well_depth: float = 3.6
 
 # Pathway & miscellaneous widths/depths

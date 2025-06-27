@@ -13,7 +13,7 @@ Public helpers
 * ``find_local_minima`` – optionally returns *index → label* mapping.
 * ``label_minima`` – quick accessor for the same mapping.
 * ``classify_minima_by_ring`` – ring assignment (returns **A/B/C** codes).
-* ``mark_minima_regions`` – boolean masks for colouring.
+* ``mark_minima_regions`` – boolean masks for coloring.
 """
 from __future__ import annotations
 from typing import Dict, Iterable, List, Tuple
