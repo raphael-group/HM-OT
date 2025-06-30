@@ -1,13 +1,7 @@
-"""utils.waddington.landscape_core
-=================================
-
-Expose only two public functions:
-    * ``V_total(x, y)``  – scalar potential value
-    * ``grad_V_total(x, y)`` – analytical gradient (∂V/∂x, ∂V/∂y)
-All other symbols are considered internal.  Import elsewhere with::
-
-    from utils.waddington.landscape_core import V_total, grad_V_total
 """
+TODO: Waddington's plateaus 
+"""
+
 from __future__ import annotations
 
 import math

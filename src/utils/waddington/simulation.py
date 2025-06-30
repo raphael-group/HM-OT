@@ -1,6 +1,6 @@
 """utils.waddington.simulation
 ================================
-Numerical integration of Langevin dynamics on the Goldilocks landscape
+Numerical integration of Langevin dynamics on the Waddington landscape
 and small helper utilities (track construction, I/O).
 
 Public surface (import via `from utils.waddington.simulation import …`):
@@ -23,7 +23,7 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.utils.waddington.landscape_core import V_total, grad_V_total
+from src.utils.waddington.landscape_core_volcano import V_total, grad_V_total
 from src.utils.waddington.landscape_core_tristable import (
                                         V_total as V_total_tri,
                                         grad_V_total as grad_V_total_tri,

@@ -1,6 +1,6 @@
 """utils.waddington.minima
 ==========================
-Local-minima detection on the Goldilocks landscape **with canonical labels**.
+Local-minima detection on the Waddington volcano **with canonical labels**.
 
 Canonical ring codes
 --------------------
@@ -25,7 +25,7 @@ from scipy.optimize import minimize
 from typing import Dict, List, Sequence, Tuple
 from anndata import AnnData
 
-from src.utils.waddington.landscape_core import (
+from src.utils.waddington.landscape_core_volcano import (
     V_total,
     grad_V_total,
     T1_positions,

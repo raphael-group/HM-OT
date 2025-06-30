@@ -3,7 +3,7 @@ from __future__ import annotations
 import napari
 import numpy as np
 
-from src.utils.waddington.visual import build_coloured_surface, axis_lines
+from src.utils.waddington.visual import build_surface, axis_lines
 from src.utils.waddington.minima import find_local_minima
 from src.utils.waddington.simulation import (
     simulate_langevin_with_snapshots,
@@ -31,7 +31,7 @@ def launch_viewer_with_differentiation(
     assignment_radius: float,
     save_data: bool = False,  # <-- toggle persistence
 ):
-    """Interactive Goldilocks viewer.
+    """Interactive viewer.
 
     Parameters
     ----------
@@ -46,8 +46,8 @@ def launch_viewer_with_differentiation(
     print(f"→ {len(minima_pts)} minima found")
 
     # 2. landscape surface ----------------------------------------------------
-    print("Building coloured surface …")
-    verts, faces, cols = build_coloured_surface(
+    print("Building surface …")
+    verts, faces, cols = build_surface(
         minima_points=minima_pts,
         assignment_radius=assignment_radius,
     )

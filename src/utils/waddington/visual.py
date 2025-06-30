@@ -24,16 +24,16 @@ from src.utils.waddington.minima import (
     classify_minima_by_ring,
     mark_minima_regions
 )
-from src.utils.waddington.landscape_core import V_total
+from src.utils.waddington.landscape_core_volcano import V_total
 
 
-__all__: list[str] = ["build_coloured_surface", "axis_lines"]
+__all__: list[str] = ["build_surface", "axis_lines"]
 
 # -----------------------------------------------------------------------------
 # 1) Surface mesh with optional colour overlays --------------------------------
 # -----------------------------------------------------------------------------
 
-def build_coloured_surface(
+def build_surface(
     *,
     res: int = 1000,
     minima_points: Sequence[Tuple[float, float]] | None = None,
