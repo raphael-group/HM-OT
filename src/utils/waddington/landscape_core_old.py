@@ -1,6 +1,5 @@
 """utils.waddington.landscape_core
 =================================
-Self‑contained definition of the Goldilocks potential landscape.
 
 Expose only two public functions:
     * ``V_total(x, y)``  – scalar potential value
