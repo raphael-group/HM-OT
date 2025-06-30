@@ -44,6 +44,7 @@ def get_diffmap_inputs(
     clustering_type: str = "ml",
     reference_index: int = None,
     global_Qs: bool = False,
+    full_P: bool = True,
 ) -> Tuple[List[List[int]], List[List[int]], Dict[int, RGBA]]:
     """
     Prepare inputs for plotting differentiation maps.
@@ -69,12 +70,15 @@ def get_diffmap_inputs(
             meaning all timepoints share all cell types,
             otherwise they are treated as local population matrices.
     """
+    raw_labels_list = []
     if global_Qs==True: # treat Qs as global population matrices (one cell type pool)
         if clustering_type == 'ml':
             raw_labels_list = max_likelihood_clustering(Qs)# [np.argmax(Q, axis=1) for Q in Qs]
-            color_dict = get_scanpy_color_dict(raw_labels_list)
+            indices = list(range(Qs[0].shape[1]))          # 0…15
+            color_dict = get_scanpy_color_dict([indices])
+            # color_dict = get_scanpy_color_dict(raw_labels_list)
         elif clustering_type == 'reference':
-            raw_labels_list = reference_clustering(Qs, Ts, reference_index)
+            raw_labels_list = reference_clustering(Qs, Ts, reference_index, full_P=full_P)
             if reference_index is None:
                 raise ValueError("reference_index needed for 'reference' clustering_type")
             raw_labels_list = [np.argmax(Q, axis=1) for Q in Qs]
@@ -94,7 +98,7 @@ def get_diffmap_inputs(
         elif clustering_type == "reference":
             if reference_index is None:
                 raise ValueError("reference_index needed for 'reference' clustering_type")
-            raw_labels_list = reference_clustering(Qs, Ts, reference_index)
+            raw_labels_list = reference_clustering(Qs, Ts, reference_index, full_P=full_P)
         else:
             raise ValueError(f"Invalid clustering_type '{clustering_type}'.")
 
@@ -107,11 +111,16 @@ def get_diffmap_inputs(
         # 2) label_list (optionally shifted) 
         index_list = []
         cumulative_shift = 0
-        if clustering_type == "ml":
+        if clustering_type == "ml" and global_Qs==False:
+            shifted_labels_list = []
             for raw_label in raw_labels_list:
-                lbls_shifted = [int(lbl + cumulative_shift) for lbl in raw_label]
-                index_list.append(list(np.unique(lbls_shifted)))
-                cumulative_shift += len(np.unique(raw_label))
+                unique_labels = np.unique(raw_label)
+                label_map = { old : old + cumulative_shift for old in unique_labels }
+                shifted = np.vectorize(label_map.get)(raw_label)
+                shifted_labels_list.append(shifted)
+                index_list.append(list(np.unique(shifted)))
+                cumulative_shift += len(unique_labels)
+            raw_labels_list = shifted_labels_list
         elif clustering_type == "reference":
             for raw_label in raw_labels_list:
                 index_list.append(list(np.unique(raw_label)))

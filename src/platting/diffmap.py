@@ -22,6 +22,7 @@ __all__ = [
     "plot_diffmap_clusters_prime",
 ]
 
+RGBA = Tuple[float, float, float, float]
 # ────────────────────────────────────────────────────────────────────────────
 #  Helper
 # ────────────────────────────────────────────────────────────────────────────
@@ -34,29 +35,28 @@ def _centres_to_array(centres_t: Dict[int, np.ndarray], local_ids: np.ndarray) -
 # ────────────────────────────────────────────────────────────────────────────
 #  Core differentiation‑map scatter + arrows
 # ────────────────────────────────────────────────────────────────────────────
+
 def plot_labeled_differentiation(
     population_list: List[List[int]],
-    transition_list: List[np.ndarray],
-    label_list: List[List[int]],
-    color_dict: Dict[int, Tuple[float, float, float, float]],
+    Ts: List[np.ndarray],
+    index_lists: List[List[int]],
     *,
-    cell_type_labels: Optional[List[Optional[List[str]]]] = None,
-    clustering_type: str = "ml",
+    ind_to_str_dict: Optional[Dict[int, str]] = None,
+    str_to_color_dict: Optional[Dict[str, RGBA]] = None,
     row_stochastic: bool = False,
     deg_threshold: float = 0.0,
     dotsize_factor: float = 1.0,
     linethick_factor: float = 10.0,
-    save_name: Optional[str] = None,
     title: Optional[str] = None,
+    save_directory: Optional[str] = None,
+    save_name: Optional[str] = None,
     stretch: float = 1.0,
     outline: float = 3.0,
     fontsize: int = 12,
 ) -> None:
-    # TODO: missing save directory argument, docstring 
     """Draw nodes per slice and arrows according to *transition_list*."""
     sns.set(style="white")
     N = len(population_list)
-    Ts = transition_list
 
     # normalise rows if requested
     if row_stochastic:
@@ -69,49 +69,51 @@ def plot_labeled_differentiation(
 
     for t, T in enumerate(Ts):
         # current slice ↓
+        ind_list_cur = index_lists[t]
+        label_list_cur = [ind_to_str_dict[i] for i in ind_list_cur]
         pops_cur = np.asarray(population_list[t])
         keep_cur = pops_cur >= deg_threshold
         x_cur = x_pos[t][keep_cur]
         y_cur = np.arange(keep_cur.sum())
-        lbl_cur = np.asarray(label_list[t])[keep_cur]
+        lbl_cur = [label_list_cur[i] for i in range(len(label_list_cur)) if keep_cur[i]]
         sizes_cur = dotsize_factor * pops_cur[keep_cur]
-        plt.scatter(x_cur, y_cur, c=[color_dict[l] for l in lbl_cur], s=sizes_cur, edgecolor="b", lw=1, zorder=1)
+        plt.scatter(x_cur, y_cur, c=[str_to_color_dict[l] for l in lbl_cur], s=sizes_cur, edgecolor="black", lw=1, zorder=1)
         row2y = {r: y_cur[i] for i, r in enumerate(np.where(keep_cur)[0])}
 
         # next slice ↓
+        ind_list_next = index_lists[t + 1]
+        label_list_next = [ind_to_str_dict[i] for i in ind_list_next]
         pops_next = np.asarray(population_list[t + 1])
         keep_next = pops_next >= deg_threshold
         x_next = x_pos[t + 1][keep_next]
         y_next = np.arange(keep_next.sum())
-        lbl_next = np.asarray(label_list[t + 1])[keep_next]
-        plt.scatter(x_next, y_next, c=[color_dict[l] for l in lbl_next], s=dotsize_factor * pops_next[keep_next], edgecolor="b", lw=1, zorder=1)
+        lbl_next = [label_list_next[i] for i in range(len(label_list_next)) if keep_next[i]]
+        plt.scatter(x_next, y_next, c=[str_to_color_dict[l] for l in lbl_next], s=dotsize_factor * pops_next[keep_next], edgecolor="black", lw=1, zorder=1)
         col2y = {c: y_next[j] for j, c in enumerate(np.where(keep_next)[0])}
 
         # arrows
-        if clustering_type == "ml":
-            r1, r2 = T.shape
-            for i_row in range(r1):
-                if i_row not in row2y:
-                    continue
-                for j_col in range(r2):
-                    if j_col not in col2y or T[i_row, j_col] == 0:
-                        continue
-                    plt.plot([x_cur[0], x_next[0]], [row2y[i_row], col2y[j_col]], "k-", lw=T[i_row, j_col] * linethick_factor, zorder=0)
-
-    # optional text labels
-    if cell_type_labels is not None:
-        for s in range(N):
-            if cell_type_labels[s] is None:
+        r1, r2 = T.shape
+        for i_row in range(r1):
+            if i_row not in row2y:
                 continue
-            for j, txt_label in enumerate(cell_type_labels[s]):
-                txt = plt.text(x_pos[s][j], y_pos[s][j], txt_label, fontsize=fontsize, ha="right", va="bottom")
-                txt.set_path_effects([path_effects.Stroke(linewidth=outline, foreground="white"), path_effects.Normal()])
+            for j_col in range(r2):
+                if j_col not in col2y or T[i_row, j_col] == 0:
+                    continue
+                plt.plot([x_cur[0], x_next[0]], [row2y[i_row], col2y[j_col]], "k-", lw=T[i_row, j_col] * linethick_factor, zorder=0)
+
+    labels_list = [ [ind_to_str_dict[i] for i in ind_list] for ind_list in index_lists]
+    # optional text labels
+    # if cell_type_labels is not None:
+    for s in range(N):
+        for j, txt_label in enumerate(labels_list[s]):
+            txt = plt.text(x_pos[s][j], y_pos[s][j], txt_label, fontsize=fontsize, ha="right", va="bottom")
+            txt.set_path_effects([path_effects.Stroke(linewidth=outline, foreground="white"), path_effects.Normal()])
 
     plt.axis("off")
     if title:
         plt.title(title, fontsize=36)
     if save_name:
-        plt.savefig(save_name, dpi=300, transparent=True, bbox_inches="tight", facecolor="white")
+        plt.savefig(save_directory + save_name, dpi=300, transparent=True, bbox_inches="tight", facecolor="white")
     plt.show()
 
 
@@ -123,35 +125,41 @@ def diffmap_from_QT(
     Qs: List[np.ndarray],
     Ts: List[np.ndarray],
     *,
-    cell_type_labels: Optional[List[Optional[List[str]]]] = None,
+    global_Qs: bool = False,
     clustering_type: str = "ml",
+    ind_to_str_dict: Optional[dict] = None,
+    str_to_color_dict: Optional[dict] = None,
     reference_index: Optional[int] = None,
     title: Optional[str] = None,
+    save_directory: Optional[str] = None,
     save_name: Optional[str] = None,
-    dsf: float = 1.0,
+    dotsize: float = 1.0,
     stretch: float = 1.0,
     outline: float = 2.0,
     fontsize: int = 12,
     linethick_factor: int = 10,
-    global_Qs: bool = False,
+    full_P: bool = True,
 ) -> None:
-
-    _, pop_list, index_list, color_dict = get_diffmap_inputs(Qs=Qs,
+    _, pop_list, index_lists, cdict = get_diffmap_inputs(Qs=Qs,
                                                         Ts=Ts, 
                                                         clustering_type=clustering_type,
                                                         reference_index=reference_index,
-                                                        global_Qs=global_Qs)
+                                                        global_Qs=global_Qs,
+                                                        full_P=full_P)
+
+    if str_to_color_dict is None:
+        str_to_color_dict = cdict
 
     plot_labeled_differentiation(
         population_list=pop_list,
-        transition_list=Ts,
-        label_list=index_list,
-        color_dict=color_dict,
-        cell_type_labels=cell_type_labels,
-        clustering_type=clustering_type,
-        dotsize_factor=dsf,
+        Ts=Ts,
+        index_lists=index_lists,
+        ind_to_str_dict=ind_to_str_dict,
+        str_to_color_dict=str_to_color_dict,
+        dotsize_factor=dotsize,
         linethick_factor=linethick_factor,
         title=title,
+        save_directory=save_directory,
         save_name=save_name,
         stretch=stretch,
         outline=outline,
@@ -160,7 +168,7 @@ def diffmap_from_QT(
 
 
 # ────────────────────────────────────────────────────────────────────────────
-#  Legacy barycentre arrow plots (no label‑shift)
+#  Legacy barycenter arrow plots (no label‑shift)
 # ────────────────────────────────────────────────────────────────────────────
 
 def plot_diffmap_clusters(
@@ -176,7 +184,6 @@ def plot_diffmap_clusters(
     max_lw: float = 8.0,
     figsize: Tuple[int, int] = (16, 16),
 ):
-    import pandas as pd
     labels_list = max_likelihood_clustering(Qs, mode=mode)
     labels_list = [np.asarray(l) for l in labels_list]
     offset, labels_flat = 0, []
@@ -222,7 +229,6 @@ def plot_diffmap_clusters_prime(
     figsize: Tuple[int, int] = (16, 16),
     centres: Optional[Dict[int, Dict[int, np.ndarray]]] = None,
 ):
-    import pandas as pd
     labels_list = max_likelihood_clustering(Qs, mode=mode)
     labels_list = [np.asarray(l) for l in labels_list]
 
