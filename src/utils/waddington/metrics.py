@@ -26,6 +26,7 @@ __all__ = [
     "compute_clustering_metrics",
     "compute_centroids",
     "evaluate_coclusters",
+    "frac_correct_latent_trajectory"
 ]
 
 # --------------------------------------------------------------------------- #
@@ -119,3 +120,24 @@ def evaluate_coclusters(
     w_w23 = (Q3_k.sum(axis=0) * cosine_similarity(C3_k,  C3_pred_w).diagonal()).sum()
 
     return [w_h12, w_h23], [w_w12, w_w23]
+
+# --------------------------------------------------------------------------- #
+# 3) latent trajectory evaluation                                             #
+# --------------------------------------------------------------------------- #
+def frac_correct_latent_trajectory(clusterings):
+    """
+    Compute fraction of items whose labels agree across any number of clustering arrays.
+    
+    Parameters
+    ----------
+    clusterings : list of 1D label arrays (all same length N)
+    
+    Returns
+    -------
+    fraction : float
+        Proportion of indices i for which all clusterings[k][i] are equal.
+    """
+    arr = np.vstack(clusterings)  # shape (K, N)
+    # Compare all rows to the first row
+    agrees = np.all(arr == arr[0], axis=0)
+    return agrees.sum() / arr.shape[1]
