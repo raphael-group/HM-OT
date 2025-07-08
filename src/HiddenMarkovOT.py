@@ -845,8 +845,30 @@ class HM_OT:
         self.T_gammas = [ T ]
         
         return
-
+    
     def compute_total_cost(self, C_factors_sequence, A_factors_sequence):
+        """
+        Compute the total cost for a low-rank Hidden Markov OT problem, 
+        factored through clusterings Q and latent couplings T.
+        
+        This function accumulates both the standard (Wasserstein) transport cost and a 
+        Gromov–Wasserstein (GW) term (if applicable) across a sequence of timepoints.
+        
+        Parameters
+        ----------
+        C_factors_sequence : list of tuple(torch.Tensor, torch.Tensor)
+            For each timepoint i, a pair (C_left, C_right) of factor matrices defining
+            the cost C = C_left @ C_right.
+        A_factors_sequence : list of tuple(torch.Tensor, torch.Tensor) or None
+            For each timepoint i, a pair (A_left, A_right) of low-rank factors for the
+            clustering at time i. The list length is len(C_factors_sequence)+1.
+            If None at i or i+1, GW cost is skipped for that pair.
+        
+        Returns
+        -------
+        cost : float
+            Aggregated cost over all timepoint transitions: sum_i [(1-alpha)*W_i + alpha*GW_i].
+        """
         
         cost = 0.0
         cost_W = 0.0
