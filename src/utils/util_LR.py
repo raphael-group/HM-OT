@@ -735,7 +735,9 @@ def seed_everything(seed: int = 42):
 def compute_total_cost(C_factors_sequence,
                        A_factors_sequence,
                        Qs,
-                       Ts
+                       Ts,
+                       alpha=0,
+                       device='cpu'
                       ):
         """
         Compute the total cost for a low-rank Hidden Markov OT problem, 
@@ -785,9 +787,9 @@ def compute_total_cost(C_factors_sequence,
             R = Qs[i+1]
             
             gQ = torch.sum(Q, axis=0)
-            one_r = torch.ones(gQ.shape[0], device=self.device)
+            one_r = torch.ones(gQ.shape[0], device=device)
             gR = torch.sum(R, axis=0)
-            one_r2 = torch.ones(gR.shape[0], device=self.device)
+            one_r2 = torch.ones(gR.shape[0], device=device)
             
             T = Ts[i]
             
@@ -795,22 +797,24 @@ def compute_total_cost(C_factors_sequence,
             
             primal_cost = torch.trace(((Q.T @ C_factors[0]) @ (C_factors[1] @ R)) @ Lambda.T)
             cost_W += primal_cost
-            
+
+            GW_cost = 0
             if A_factors is not None and B_factors is not None:
                 X = R @ ((Lambda.T @ ((Q.T @ A_factors[0]) @ (A_factors[1] @ Q)) @ Lambda) @ (R.T @ B_factors[0])) @ B_factors[1]
                 GW_cost = - 2 * torch.trace(X) # add these: one_r.T @ M1 @ one_r + one_r.T @ M2 @ one_r
                 del X
-                A1_tild, A2_tild = util.hadamard_square_lr(A_factors[0], A_factors[1].T, device=self.device)
+                A1_tild, A2_tild = util.hadamard_square_lr(A_factors[0], A_factors[1].T, device=device)
                 GW_cost += torch.inner(A1_tild.T @ (Q @ one_r), A2_tild.T @ (Q @ one_r))
                 del A1_tild, A2_tild
-                B1_tild, B2_tild = util.hadamard_square_lr(B_factors[0], B_factors[1].T, device=self.device)
+                B1_tild, B2_tild = util.hadamard_square_lr(B_factors[0], B_factors[1].T, device=device)
                 GW_cost += torch.inner(B1_tild.T @ (R @ one_r2), B2_tild.T @ (R @ one_r2))
                 del B1_tild, B2_tild
                 # Update cost
                 cost_GW += GW_cost
-                cost += ((1-self.alpha)*primal_cost + self.alpha*GW_cost).cpu()
             else:
                 cost_GW = 0
+            
+            cost += ((1-alpha)*primal_cost + alpha*GW_cost).cpu()
         
         print(f'Final Cost: {cost}; cost_GW: {cost_GW}, cost_W: {cost_W}')
         

@@ -22,6 +22,7 @@ import ot
 import matplotlib.pyplot as plt
 import src.HiddenMarkovOT as HiddenMarkovOT
 import src.utils.clustering as clustering
+import src.utils.util_LR as util_LR
 import src.plotting as plotting
 from sklearn.cluster import KMeans
 import matplotlib as mpl
@@ -459,7 +460,29 @@ def analyze_noise_level(
     frac_gwot = latent_traj_acc(clustering_gwot)
     
     print(f'Frac Correct (HM-OT): {frac_hmot}, (WOT): {frac_wot}, (gWOT): {frac_gwot}')
-    return frac_hmot, frac_wot, frac_gwot
+    
+    cost_hmot = util_LR.compute_total_cost(C_factors_sequence,
+                       A_seq,
+                       hmot.Q_gammas,
+                       hmot.T_gammas,
+                       device=device)
+    cost_wot = util_LR.compute_total_cost(C_factors_sequence,
+                       A_seq,
+                       [torch.tensor(Q).to(device).to(dtype) for Q in Qs_ann],
+                       [torch.tensor(T).to(device).to(dtype) for T in Ts_wot],
+                       device=device)
+    cost_gwot = util_LR.compute_total_cost(C_factors_sequence,
+                       A_seq,
+                       [torch.tensor(Q).to(device).to(dtype) for Q in Qs_ann],
+                       [torch.tensor(T).to(device).to(dtype) for T in Ts_gwot],
+                       device=device)
+    
+    print(f"OT Costs:\n  HM-OT: {cost_hmot:.4f}\n  WOT:   {cost_wot:.4f}\n  gWOT:  {cost_gwot:.4f}")
+    
+    return {
+                'frac': {'hmot': frac_hmot, 'wot': frac_wot, 'gwot': frac_gwot},
+                'cost': {'hmot': cost_hmot, 'wot': cost_wot, 'gwot': cost_gwot}
+            }
 
 
 __all__ = [
