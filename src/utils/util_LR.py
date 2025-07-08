@@ -730,3 +730,91 @@ def seed_everything(seed: int = 42):
     torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)
     return
+
+
+def compute_total_cost(C_factors_sequence,
+                       A_factors_sequence,
+                       Qs,
+                       Ts
+                      ):
+        """
+        Compute the total cost for a low-rank Hidden Markov OT problem, 
+        factored through clusterings Q and latent couplings T.
+    
+        This function accumulates both the standard (Wasserstein) transport cost and a 
+        Gromov–Wasserstein (GW) term (if applicable) across a sequence of timepoints.
+        
+        Parameters
+        ----------
+        C_factors_sequence : list of tuple(torch.Tensor, torch.Tensor)
+            For each timepoint i, a pair (C_left, C_right) of factor matrices defining
+            the cost C = C_left @ C_right.
+        A_factors_sequence : list of tuple(torch.Tensor, torch.Tensor) or None
+            For each timepoint i, a pair (A_left, A_right) of low-rank factors for the
+            clustering at time i. The list length is len(C_factors_sequence)+1.
+            If None at i or i+1, GW cost is skipped for that pair.
+        Qs : list of torch.Tensor
+            Marginal cluster assignment matrices Q at each timepoint i.
+            Shapes: Qs[i] is (n_i x r_i), where n_i samples, r_i latent clusters.
+        Ts : list of torch.Tensor
+            Latent coupling matrices T between clusterings at timepoints i and i+1.
+            Shapes: Ts[i] is (r_i x r_{i+1}).
+        alpha : float
+            Weighting between the standard transport cost and the GW correction.
+            cost = (1-alpha)*cost_W + alpha*cost_GW.
+        device : torch.device
+            Device on which tensors are stored (e.g., 'cpu' or 'cuda').
+        
+        Returns
+        -------
+        cost : float
+            Aggregated cost over all timepoint transitions: sum_i [(1-alpha)*W_i + alpha*GW_i].
+        """
+        
+        cost = 0.0
+        cost_W = 0.0
+        cost_GW = 0.0
+        
+        for i in range(len(C_factors_sequence)):
+
+            A_factors = A_factors_sequence[i]
+            B_factors = A_factors_sequence[i+1]
+            C_factors = C_factors_sequence[i]
+
+            Q = Qs[i]
+            R = Qs[i+1]
+            
+            gQ = torch.sum(Q, axis=0)
+            one_r = torch.ones(gQ.shape[0], device=self.device)
+            gR = torch.sum(R, axis=0)
+            one_r2 = torch.ones(gR.shape[0], device=self.device)
+            
+            T = Ts[i]
+            
+            Lambda = torch.diag(1/gQ) @ T @ torch.diag(1/gR)
+            
+            primal_cost = torch.trace(((Q.T @ C_factors[0]) @ (C_factors[1] @ R)) @ Lambda.T)
+            cost_W += primal_cost
+            
+            if A_factors is not None and B_factors is not None:
+                X = R @ ((Lambda.T @ ((Q.T @ A_factors[0]) @ (A_factors[1] @ Q)) @ Lambda) @ (R.T @ B_factors[0])) @ B_factors[1]
+                GW_cost = - 2 * torch.trace(X) # add these: one_r.T @ M1 @ one_r + one_r.T @ M2 @ one_r
+                del X
+                A1_tild, A2_tild = util.hadamard_square_lr(A_factors[0], A_factors[1].T, device=self.device)
+                GW_cost += torch.inner(A1_tild.T @ (Q @ one_r), A2_tild.T @ (Q @ one_r))
+                del A1_tild, A2_tild
+                B1_tild, B2_tild = util.hadamard_square_lr(B_factors[0], B_factors[1].T, device=self.device)
+                GW_cost += torch.inner(B1_tild.T @ (R @ one_r2), B2_tild.T @ (R @ one_r2))
+                del B1_tild, B2_tild
+                # Update cost
+                cost_GW += GW_cost
+                cost += ((1-self.alpha)*primal_cost + self.alpha*GW_cost).cpu()
+            else:
+                cost_GW = 0
+        
+        print(f'Final Cost: {cost}; cost_GW: {cost_GW}, cost_W: {cost_W}')
+        
+        return cost
+
+
+
