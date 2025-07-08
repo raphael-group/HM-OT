@@ -30,6 +30,7 @@ def launch_viewer_with_differentiation(
     langevin_D: float,
     assignment_radius: float,
     save_data: bool = False,  # <-- toggle persistence
+    str_to_color_dict: dict | None = None
 ):
     """Interactive viewer.
 
@@ -50,6 +51,7 @@ def launch_viewer_with_differentiation(
     verts, faces, cols = build_surface(
         minima_points=minima_pts,
         assignment_radius=assignment_radius,
+        str_to_color_dict=str_to_color_dict,
     )
 
     # 3. Langevin simulation --------------------------------------------------
@@ -81,7 +83,7 @@ def launch_viewer_with_differentiation(
     # 6. viewer ---------------------------------------------------------------
     tracks = build_tracks(Xs, Ys)
 
-    viewer = napari.Viewer(ndisplay=3, title="Goldilocks – differentiation")
+    viewer = napari.Viewer(ndisplay=3, title="volcano – differentiation")
     try:
         viewer.theme = "light"
     except AttributeError:

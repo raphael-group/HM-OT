@@ -17,6 +17,7 @@ import numpy as np
 from typing import List, Sequence, Tuple
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe   # put this near your imports
 import seaborn as sns
 
 from src.utils.waddington.minima import (
@@ -38,6 +39,7 @@ def build_surface(
     res: int = 1000,
     minima_points: Sequence[Tuple[float, float]] | None = None,
     assignment_radius: float = 1.4,
+    str_to_color_dict: dict | None = None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute (verts, faces, colours) for Napari’s ``add_surface``.
 
@@ -77,14 +79,14 @@ def build_surface(
     colours = np.stack([grey, grey, grey, np.ones_like(grey)], axis=1).astype(np.float32)
 
     # overlay minima catchment basins -----------------------------------------
-    if minima_points is not None:
+    '''if minima_points is not None:
         classified = classify_minima_by_ring(minima_points)
         t1, t2, t3 = mark_minima_regions(
             X, Y, classified, ball_radius=assignment_radius
         )
-        colours[t1.ravel()] = (1.0, 1.0, 0.0, 1.0)  # yellow
-        colours[t2.ravel()] = (1.0, 0.5, 0.0, 1.0)  # orange
-        colours[t3.ravel()] = (1.0, 0.0, 0.0, 1.0)  # red
+        colours[t1.ravel()] = (0.9, 0.9, 0.9, 1.0)  # yellow
+        colours[t2.ravel()] = (0.9, 0.9, 0.9, 1.0)  # orange
+        colours[t3.ravel()] = (0.9, 0.9, 0.9, 1.0)  # red'''
 
     return verts, faces, colours
 
@@ -103,7 +105,8 @@ def axis_lines(L: float = 3.5):
     ]
 
 def create_cluster_dict_and_plot(minima_points,
-                                 assignment_radius: float = 1.4):
+                                 assignment_radius: float = 1.6,
+                                 str_to_color_dict: dict | None = None):
     """Build {coord → canonical-label} and show a 3-panel ring plot."""
     print(f"Assignment radius: {assignment_radius}")
 
@@ -123,32 +126,49 @@ def create_cluster_dict_and_plot(minima_points,
         print(f"({x:6.3f}, {y:6.3f})  r={r:5.2f}  θ={ang:6.1f}° → {lbl}")
 
     # ------------------------------------------------------------------ plotting
-    sns.set_style("whitegrid")
+    sns.set_style("white")
     sns.set_context("talk", font_scale=1.0)
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharex=True, sharey=True)
 
     ring_to_ax = {"A": 0, "B": 1, "C": 2}
     titles     = {"A": "Inner ring (A)", "B": "Middle ring (B)",
                   "C": "Outer ring (C)"}
 
     for (x, y, ring) in ring_info:
-        ax = axes[ring_to_ax[ring]]
-        ax.scatter(minima_points[:, 0], minima_points[:, 1],
-                   c="black", alpha=.5)
-        ax.add_patch(Circle((x, y), assignment_radius,
-                            fill=False, color="red", lw=2))
         lbl = cluster_dict[(x, y)]
-        ax.text(x + assignment_radius*0.7,
-                y + assignment_radius*0.7,
-                lbl, fontsize=14, weight="bold", color="blue")
+        ax = axes[ring_to_ax[ring]]
+
+        if str_to_color_dict is not None:
+            rgb_color = str_to_color_dict[lbl]
+            ax.add_patch(Circle((x, y), assignment_radius,
+                                fill=True, facecolor=rgb_color, edgecolor='black', lw=2, alpha=0.5))
+        else:
+            ax.add_patch(Circle((x, y), assignment_radius,
+                                 fill=False, color="red", lw=2))
+        ax.scatter(minima_points[:, 0], minima_points[:, 1], c="lightgray", alpha=.5)
+        txt = ax.text(
+            x + assignment_radius*0.0, 
+            y + assignment_radius*0.0, 
+            lbl,
+            fontsize=18,
+            weight="bold",
+            color="black",
+            va="center", ha="center"          # (optional) nice centering
+        )
+        txt.set_path_effects([
+            pe.Stroke(linewidth=2, foreground="white"),
+            pe.Normal()
+        ])
 
     for ring, ax_idx in ring_to_ax.items():
         ax = axes[ax_idx]
         ax.set_aspect("equal", adjustable="box")
         ax.set_title(titles[ring], fontsize=18, weight="bold")
-        ax.set_xlabel("x")
-        ax.set_ylabel("y")
-        sns.despine(ax=ax)
+        ax.set_xlabel(None)
+        ax.set_ylabel(None)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        sns.despine(ax=ax, left=True, bottom=True)
 
     plt.tight_layout()
     plt.show()

@@ -26,9 +26,24 @@ def plot_clustering_list(
     dotsize: float = 1.0,
     key_dotsize: float = 1.0,
     flip: bool = False,
+    fontsize: int = 24,
     subplot_labels: Optional[List[Optional[str]]] = None,
+    pad: float = 0.1,  # padding for the plot axes
+    subplot_spacing: float = 0.1,  # spacing between subplots
+    key_spacing: float = 1.0,
+    label_order: Optional[List[str]] = None,  # order of labels in legend
+    dot_alpha: float = 1.0,  # opacity of dots
+    outline_color: str = "white",  # outline color for dots
 ) -> None:
     """One subplot *per* slice with consistent color scheme."""
+    if label_order is None:
+    # 1. if the user already supplied a mapping, respect its insertion order
+        if ind_to_str_dict is not None:
+            label_order = list(ind_to_str_dict.values())
+        # 2. otherwise fall back to an alphabetical sort
+        else:
+            label_order = sorted(set(lbls))
+    else: pass
     n_slices = len(Ss)
 
     sns.set_style("white")
@@ -49,6 +64,11 @@ def plot_clustering_list(
         else:
             pass
         lbls = [ind_to_str_dict[int(i)] for i in labels]
+        cats = [lab for lab in (label_order or sorted(set(lbls))) if lab in lbls]
+
+        lbls = pd.Categorical(lbls,
+                              categories=cats,
+                              ordered=True)
         
         ax = axes[i]
         if flip:
@@ -61,6 +81,8 @@ def plot_clustering_list(
             hue="value",
             palette=str_to_color_dict,
             s=dotsize,
+            alpha=dot_alpha,
+            edgecolor=outline_color,
             legend="brief",
             ax=ax,
         )
@@ -74,29 +96,35 @@ def plot_clustering_list(
             loc="center left",
             bbox_to_anchor=(1, 0.5),
             frameon=False,
-            labelspacing=4 * key_dotsize,
-            fontsize=20,
+            labelspacing=2 * key_dotsize * key_spacing,
+            fontsize=fontsize,
         )
 
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
+        ax.set_xlim(x_min-pad, x_max+pad)
+        ax.set_ylim(y_min-pad, y_max+pad)
         if flip:
             ax.invert_yaxis()
         ax.axis("off")
         ax.set_aspect("equal", adjustable="box")
-
-        """if subplot_labels is not None:
-            ax.set_title(subplot_labels[i] or "", color="black")
-        else:
-            pass
-            ax.set_title(f"Slice {i + 1}", color="black")"""
-
+        ax.margins(x=pad,  
+            y=pad)  
+    
+    ax = plt.gca() 
+    plt.subplots_adjust(wspace=subplot_spacing) 
+    plt.show()
+    # plt.tight_layout()
     if title:
         plt.suptitle(title, fontsize=36, color="black")
     if save_name:
-        plt.savefig(save_directory + save_name, dpi=300, transparent=True, bbox_inches="tight", facecolor="white")
-    plt.tight_layout()
-    plt.show()
+        plt.savefig(save_directory + save_name,
+                dpi=300,
+                transparent=True,
+                bbox_inches="tight",
+                pad_inches=pad,      # ← uniform ¼-inch padding
+                facecolor="white",
+            )
+    
+
 
 # ────────────────────────────────────────────────────────────────────────────
 #  Convenience wrappers that derive clusters from (Qs, Ts) then plot
@@ -117,9 +145,16 @@ def plot_clusters_from_QT(
     save_name: Optional[str] = None,
     dotsize: float = 1.0,
     key_dotsize: float = 1.0,
+    fontsize: int = 24,
     flip: bool = False,
     subplot_labels: Optional[List[Optional[str]]] = None,
     full_P: bool = True, 
+    pad: float = 0.1,  # padding for the plot axes
+    subplot_spacing: float = 0.1,  # spacing between subplots
+    key_spacing: float = 1.0,  # spacing for the key
+    label_order: Optional[List[str]] = None,  # order of labels in legend
+    dot_alpha: float = 1.0,  # opacity of dots
+    outline_color: str = "white",  # outline color for dots
 ) -> None:
     """
     Args:
@@ -193,4 +228,11 @@ def plot_clusters_from_QT(
         key_dotsize=key_dotsize,
         flip=flip,
         subplot_labels=subplot_labels,
+        fontsize=fontsize,
+        pad=pad,
+        subplot_spacing=subplot_spacing,
+        key_spacing=key_spacing,
+        label_order=label_order,
+        dot_alpha=dot_alpha,
+        outline_color=outline_color
     )

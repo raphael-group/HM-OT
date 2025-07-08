@@ -53,6 +53,9 @@ def plot_labeled_differentiation(
     stretch: float = 1.0,
     outline: float = 3.0,
     fontsize: int = 12,
+    pad: float = 0.1,
+    label_order: Optional[List[str]] = None,
+    stagger: bool = False,
 ) -> None:
     """Draw nodes per slice and arrows according to *transition_list*."""
     sns.set(style="white")
@@ -62,8 +65,44 @@ def plot_labeled_differentiation(
     if row_stochastic:
         Ts = [T / np.where(T.sum(1, keepdims=True) == 0, 1, T.sum(1, keepdims=True)) for T in Ts]
 
+    #x_pos = [np.full(len(pop), i) for i, pop in enumerate(population_list)]
+    #y_pos = [np.arange(len(pop)) for pop in population_list]
+    # ── canonical ordering for every slice ───────────────────────────────
+    if label_order is None:
+        # fall-back: insertion order of the user’s mapping (Python ≥ 3.7),
+ # otherwise alphabetical union of all labels
+        all_inds = {i for inds in index_lists for i in inds}
+        if ind_to_str_dict is None:
+            ind_to_str_dict = {int(i): str(int(i)) for i in all_inds}
+        label_order = [ind_to_str_dict[i]                                  # insertion-order path
+                       for i in ind_to_str_dict if i in all_inds] \
+                      or sorted(ind_to_str_dict[i] for i in all_inds)      # alphabetical path
+
+
     x_pos = [np.full(len(pop), i) for i, pop in enumerate(population_list)]
-    y_pos = [np.arange(len(pop)) for pop in population_list]
+    if stagger:                                      # global, hole-keeping layout
+        label_to_rank = {lab: k for k, lab in enumerate(label_order)}
+        y_pos = [np.array([label_to_rank[ind_to_str_dict[i]]
+                        for i in ind_list])
+                for ind_list in index_lists]
+
+    else:                                            # compact, slice-local layout
+        y_pos = []
+        for ind_list in index_lists:
+            # labels that actually appear in THIS slice, but in canonical order
+            present = [lab for lab in label_order
+                    if lab in (ind_to_str_dict[i] for i in ind_list)]
+            local_rank = {lab: k for k, lab in enumerate(present)}
+            y_pos.append(np.array([local_rank[ind_to_str_dict[i]]
+                                for i in ind_list]))
+    """ if stagger:
+        label_to_rank = {lab: k for k, lab in enumerate(label_order)}
+
+        y_pos = [np.array([label_to_rank[ind_to_str_dict[i]]                  # canonical y for every node
+                        for i in ind_list])
+                for ind_list in index_lists]
+    else:
+        y_pos = [np.arange(len(ind_list)) for ind_list in index_lists]"""
 
     plt.figure(figsize=(stretch * 5 * (N - 1), 10))
 
@@ -74,11 +113,13 @@ def plot_labeled_differentiation(
         pops_cur = np.asarray(population_list[t])
         keep_cur = pops_cur >= deg_threshold
         x_cur = x_pos[t][keep_cur]
-        y_cur = np.arange(keep_cur.sum())
+        #y_cur = np.arange(keep_cur.sum())
+        y_cur = y_pos[t][keep_cur]
         lbl_cur = [label_list_cur[i] for i in range(len(label_list_cur)) if keep_cur[i]]
         sizes_cur = dotsize_factor * pops_cur[keep_cur]
         plt.scatter(x_cur, y_cur, c=[str_to_color_dict[l] for l in lbl_cur], s=sizes_cur, edgecolor="black", lw=1, zorder=1)
-        row2y = {r: y_cur[i] for i, r in enumerate(np.where(keep_cur)[0])}
+        # row2y = {r: y_cur[i] for i, r in enumerate(np.where(keep_cur)[0])}
+        row2y = {r: y_pos[t][r] for r in np.where(keep_cur)[0]}
 
         # next slice ↓
         ind_list_next = index_lists[t + 1]
@@ -86,10 +127,12 @@ def plot_labeled_differentiation(
         pops_next = np.asarray(population_list[t + 1])
         keep_next = pops_next >= deg_threshold
         x_next = x_pos[t + 1][keep_next]
-        y_next = np.arange(keep_next.sum())
+        #y_next = np.arange(keep_next.sum())
+        y_next = y_pos[t + 1][keep_next]
         lbl_next = [label_list_next[i] for i in range(len(label_list_next)) if keep_next[i]]
         plt.scatter(x_next, y_next, c=[str_to_color_dict[l] for l in lbl_next], s=dotsize_factor * pops_next[keep_next], edgecolor="black", lw=1, zorder=1)
-        col2y = {c: y_next[j] for j, c in enumerate(np.where(keep_next)[0])}
+        #col2y = {c: y_next[j] for j, c in enumerate(np.where(keep_next)[0])}
+        col2y = {c: y_pos[t + 1][c]  for c in np.where(keep_next)[0]}
 
         # arrows
         r1, r2 = T.shape
@@ -106,15 +149,26 @@ def plot_labeled_differentiation(
     # if cell_type_labels is not None:
     for s in range(N):
         for j, txt_label in enumerate(labels_list[s]):
-            txt = plt.text(x_pos[s][j], y_pos[s][j], txt_label, fontsize=fontsize, ha="right", va="bottom")
+            txt = plt.text(x_pos[s][j], y_pos[s][j], txt_label, fontsize=fontsize, ha="right", va="bottom", weight="bold", zorder=2)
             txt.set_path_effects([path_effects.Stroke(linewidth=outline, foreground="white"), path_effects.Normal()])
 
     plt.axis("off")
     if title:
         plt.title(title, fontsize=36)
-    if save_name:
-        plt.savefig(save_directory + save_name, dpi=300, transparent=True, bbox_inches="tight", facecolor="white")
+
+    ax = plt.gca() 
+    ax.margins(x=pad,  # pad * 100 % of the data-range on left & right
+            y=pad)  # pad * 100 % of the data-range on top & bottom
     plt.show()
+
+    if save_name:
+        plt.savefig(save_directory + save_name,
+                dpi=300,
+                transparent=True,
+                bbox_inches="tight",
+                pad_inches=pad,      # ← uniform ¼-inch padding
+                facecolor="white",
+            )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -139,6 +193,8 @@ def diffmap_from_QT(
     fontsize: int = 12,
     linethick_factor: int = 10,
     full_P: bool = True,
+    label_order: Optional[List[str]] = None,
+    stagger: bool = False,
 ) -> None:
     _, pop_list, index_lists, cdict = get_diffmap_inputs(Qs=Qs,
                                                         Ts=Ts, 
@@ -164,6 +220,8 @@ def diffmap_from_QT(
         stretch=stretch,
         outline=outline,
         fontsize=fontsize,
+        label_order=label_order,
+        stagger=stagger,
     )
 
 
