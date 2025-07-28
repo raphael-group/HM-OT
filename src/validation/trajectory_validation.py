@@ -484,6 +484,97 @@ def analyze_noise_level(
                 'cost': {'hmot': cost_hmot, 'wot': cost_wot, 'gwot': cost_gwot}
             }
 
+'''
+def analyze_gwot_only(
+    data_snap,
+    snap_times,
+    device,
+    dtype=torch.float32,
+    dtype_np=np.float32,
+    K=3,
+    eps_df=0.0001,
+    D=1.0,
+    seed=42,
+):
+    """
+    Pipeline to run just gWOT on clustered data and compute latent traj accuracy.
+    Returns:
+      frac_gwot: float
+    """
+    
+    # 1) Prepare snapshots
+    Ss = [data_snap[f"step_{t}"] for t in snap_times]
+    
+    # 2) Cluster each snapshot with KMeans
+    Qs_ann, klabel_lst = extract_KMeans_Qs(Ss, K=K, seed=seed)
+
+    # 3) Compute gWOT transport matrices between each pair
+    dt = snap_times[1] - snap_times[0]
+    Ts_gwot, _ = compute_Ts_pairwise(
+        Ss,
+        klabel_lst,
+        method='gWOT',
+        dt=dt,
+        dtype=torch.float64,
+        dtype_np=np.float64,
+        eps_df=eps_df,
+        D=dt * D,
+    )
+
+    # 4) Build reference clustering at final time
+    clustering_gwot = clustering.reference_clustering(
+        Qs_ann,
+        Ts_gwot,
+        reference_index=len(Qs_ann) - 1
+    )
+
+    # 5) Compute and return fraction‐correct
+    frac_gwot = latent_traj_acc(clustering_gwot)
+    return frac_gwot'''
+def analyze_gwot_only(
+    data_snap,
+    snap_times,
+    lamda_reg,
+    eps_df,
+    device,
+    dtype=torch.float32,
+    dtype_np=np.float32,
+    K=3,
+    D=1.0,
+    seed=42,
+):
+    """
+    Runs gWOT for a single (lamda_reg, eps_df) on clustered data
+    and returns the latent‐trajectory accuracy.
+    """
+    # Gather raw snapshots
+    Ss = [data_snap[f"step_{t}"] for t in snap_times]
+
+    # Cluster each snapshot
+    Qs_ann, klabel_lst = extract_KMeans_Qs(Ss, K=K, seed=seed)
+
+    # Solve global gWOT couplings
+    dt = snap_times[1] - snap_times[0]
+    Ts_gwot, _ = compute_Ts_pairwise(
+        Ss,
+        klabel_lst,
+        method='gWOT',
+        dt=dt,
+        dtype=torch.float64,
+        dtype_np=np.float64,
+        eps_df=eps_df,
+        D=dt * D,
+    )
+    
+    # Build reference clustering at final time
+    clustering_gwot = clustering.reference_clustering(
+        Qs_ann,
+        Ts_gwot,
+        reference_index=len(Qs_ann) - 1
+    )
+    
+    # Compute and return the trajectory‐accuracy metric
+    return latent_traj_acc(clustering_gwot)
 
 __all__ = [
     "compute_pw_coupling_wot",
