@@ -2,7 +2,7 @@
 
 
 
-**HM-OT** is a scalable algorithm for learning **cell-state transitions** in time-series single-cell datasets using the principle of **optimal transport**.
+**HM-OT** is a scalable algorithm for learning **cell-state transitions** in time-series single-cell and spatial transcriptomics datasets using the principle of **optimal transport**.
 
 
 Given a time-series of datasets $X_1, X_2, \dots, X_N$, HM-OT learns:
