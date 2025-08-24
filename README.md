@@ -60,9 +60,26 @@ HM-OT/
 └── README.md
 ```
 
+## Code & Environment
 
+All experiments were run using frozen snapshots of this repository. The table below lists which commit was used for each set of experiments.
+
+| Experiments   | Commit SHA | Notes                  |
+|---------------|------------|------------------------|
+| 4.1           | [`7fb6785`](https://github.com/<user>/<repo>/commit/7fb67851c4cbaf0e9787d021134dc8541171756d) | Includes Figure 2    |
+| 4.2           | [`49dfdbe`](https://github.com/<user>/<repo>/commit/49dfdbbeeed413dd79544d18d8ce00aa115becf7) | Includes Figure 3    |
+| 4.3a          | [`7fb6785`](https://github.com/<user>/<repo>/commit/7fb67851c4cbaf0e9787d021134dc8541171756d) | Includes Figure 4b, 4c   |
+| 4.3b          | [`dbb00d2`](https://github.com/<user>/<repo>/commit/dbb00d26283085b444060eb4a182f14a6904ca84) | Includes Figure 4d, 4e   |
+| 4.4.1         | [`dbb00d2`](https://github.com/<user>/<repo>/commit/dbb00d26283085b444060eb4a182f14a6904ca84) | Includes Figure 5      |
+| 4.4.2         | [`dbb00d2`](https://github.com/<user>/<repo>/commit/dbb00d26283085b444060eb4a182f14a6904ca84) | Includes Figure 6      |
+| 4.5           | [`3d2f012`](https://github.com/<user>/<repo>/commit/3d2f0126bea2b118d6b79b7e0adc86bc464469fd) | Includes Figure 7    |
+| S5.3 (Zebrafish) | [`3d2f012`](https://github.com/<user>/<repo>/commit/3d2f0126bea2b118d6b79b7e0adc86bc464469fd) | Includes Figure S18, S22    |
+
+Additional details:
+- **Environment:** see [`requirements.txt`](requirements.txt).  
+- **Randomness:** Algorithms include randomized components (e.g. initialization, solvers). Unless otherwise stated, we fixed `seed=42`. Re-running with different seeds produces small numerical variability that does not change qualitative conclusions. Where applicable, we report mean ± s.d. over N runs (or maxima over N runs).
+  
 **Contact**
-
 
 If you have any questions or difficulties at all, feel free to reach out to Peter Halmos (ph3641@princeton.edu) or Julian Gold (jg7090@princeton.edu). We're happy to help!
 
